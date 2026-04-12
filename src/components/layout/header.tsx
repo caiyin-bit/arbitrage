@@ -1,3 +1,4 @@
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -44,6 +45,9 @@ export function Header({ title = "Dashboard" }: HeaderProps) {
         <button className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
           Export
         </button>
+
+        {/* Theme toggle */}
+        <ThemeToggle />
       </div>
     </header>
   );
