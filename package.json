@@ -2,6 +2,7 @@
   "name": "funding-rate-arbitrage",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "dotenv -e .env.local -- next dev",
     "build": "next build",

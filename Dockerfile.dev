@@ -1,8 +1,23 @@
-FROM node:20-alpine
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Use locally-tagged copy of node:20-alpine so BuildKit does not try to
+# contact docker.io (which may be unreachable). Tag once on a host with
+# Docker Hub access:  docker tag node:20-alpine local/node:20-alpine
+FROM local/node:20-alpine
+
+# node:20-alpine already ships with libssl.so.3 + libcrypto.so.3, which is
+# all Prisma 6 needs. No apk add required — that's good because Alpine's
+# package index is flaky behind some networks.
+# pnpm version is pinned via package.json `packageManager` field.
+# corepack reads that field and pulls the exact version on demand.
+RUN corepack enable
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
 WORKDIR /app
+
+# Install deps into the image so the anonymous volume is pre-populated
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm prisma generate
-CMD ["pnpm", "dev"]
+
+# Source is mounted in via docker compose volumes — no COPY needed.
+# Prisma client is regenerated at container start to reflect any schema
+# changes made on the host between restarts.
+CMD ["sh", "-c", "pnpm prisma generate && pnpm dev"]

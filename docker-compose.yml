@@ -4,8 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     volumes:
+      # Mount source so HMR picks up host edits
       - .:/app
+      # Preserve container's node_modules from the image build
+      # (the host's node_modules would mask it otherwise)
       - /app/node_modules
+      # Preserve Next's build cache across restarts
+      - /app/.next
     ports:
       - "3000:3000"
     depends_on:
@@ -14,6 +19,28 @@ services:
       redis:
         condition: service_healthy
     env_file: .env.local
+    environment:
+      # Override .env.local localhost URLs with Docker network service names.
+      # Password must stay in sync with POSTGRES_PASSWORD below.
+      DATABASE_URL: postgresql://arbitrage:${DB_PASSWORD:-changeme}@postgres:5432/arbitrage
+      REDIS_URL: redis://redis:6379
+      # macOS Docker Desktop fsevents don't propagate through bind mounts
+      # reliably — force polling for Next.js / Turbopack / tsx watch
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "500"
+      # Docker Desktop's Linux VM has broken IPv6 egress to some hosts (TLS
+      # handshake gets killed by a middlebox). Force Node to prefer IPv4 for
+      # all DNS lookups so undici/fetch reaches exchange APIs reliably.
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
+    # Bypass host's DNS (Shadowrocket's fake-IP mode poisons the container
+    # with 198.18.0.0/15 addresses that have no route). Resolve via public
+    # DNS directly from the container.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    tty: true
+    stdin_open: true
 
   postgres:
     image: postgres:15-alpine
