@@ -152,6 +152,14 @@ export async function closeHedgedPosition(
       executionId,
     };
 
+    const { dispatch } = await import("@/server/services/notifier");
+    await dispatch({
+      kind: "position_closed",
+      symbol: position.symbol,
+      pnl: 0, // Plan 3 wires real P&L from settlements
+      reason: req.reason,
+    });
+
     await redis.set(resultKey, JSON.stringify(finalResult), "EX", RESULT_TTL_SECONDS);
     return finalResult;
   } finally {

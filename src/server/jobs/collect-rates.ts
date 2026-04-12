@@ -50,6 +50,15 @@ export async function handleCollectRates() {
         detectedAt: new Date(),
       },
     });
+
+    const { dispatch } = await import("@/server/services/notifier");
+    await dispatch({
+      kind: "opportunity_detected",
+      symbol: opp.symbol,
+      annualizedYield: opp.annualizedYield,
+      longExchange: opp.longExchange,
+      shortExchange: opp.shortExchange,
+    });
   }
 
   if (opportunities.length > 0) {

@@ -43,6 +43,13 @@ export async function scanSettlements() {
                 settledAt: p.settledAt,
               },
             });
+            const { dispatch } = await import("@/server/services/notifier");
+            await dispatch({
+              kind: "settlement_recorded",
+              symbol: pos.symbol,
+              side,
+              amount: p.amount,
+            });
           } catch (err: any) {
             // P2002 = unique constraint violation → already recorded, skip
             if (err?.code !== "P2002") throw err;

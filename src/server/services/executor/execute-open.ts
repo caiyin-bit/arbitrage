@@ -174,6 +174,13 @@ export async function openHedgedPosition(
           data: { status: "OPEN" },
         });
         finalResult = { status: "filled", positionId: position.id, executionId };
+        const { dispatch } = await import("@/server/services/notifier");
+        await dispatch({
+          kind: "position_opened",
+          symbol: req.symbol,
+          size: req.size,
+          executionId,
+        });
       } else if (plan.kind === "both_failed") {
         await prisma.position.update({
           where: { id: position.id },

@@ -117,6 +117,15 @@ export async function runHealthCheck() {
       }
     } else {
       await redis.set(keys.pause(symbol), JSON.stringify(next));
+      if (!current) {
+        const { dispatch } = await import("@/server/services/notifier");
+        await dispatch({
+          kind: "volatility_pause",
+          symbol,
+          reason: next.reason,
+          change: next.reason === "1h_volatility" ? priceChange1h : priceChange24h,
+        });
+      }
       if (!current || current.recoveryCount !== next.recoveryCount) {
         console.log(`[health] ${symbol} pause state (source=${result.source}):`, next);
       }

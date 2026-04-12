@@ -120,6 +120,19 @@ export async function executeRescue(
     },
   });
 
+  const { dispatch } = await import("@/server/services/notifier");
+  if (plan.kind !== "both_filled" && plan.kind !== "both_failed") {
+    const dispatchSide: "long" | "short" =
+      plan.kind === "topup" ? (plan.side === "long" ? "short" : "long") : plan.side;
+    await dispatch({
+      kind: "rescue_triggered",
+      symbol,
+      side: dispatchSide,
+      qty: plan.qty,
+      note,
+    });
+  }
+
   return {
     status: newStatus === "OPEN" ? "filled" : "rescued",
     positionId: position.id,
