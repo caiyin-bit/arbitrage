@@ -5,6 +5,7 @@ import { OkxAdapter } from "./okx";
 import { BybitAdapter } from "./bybit";
 import { GateioAdapter } from "./gateio";
 import { HuobiAdapter } from "./huobi";
+import { MockBinanceAdapter } from "./mock-binance";
 
 export function createAdapter(
   name: ExchangeName,
@@ -23,5 +24,7 @@ export function createAdapter(
       return new GateioAdapter(apiKey, apiSecret);
     case "huobi":
       return new HuobiAdapter(apiKey, apiSecret);
+    case "mock-binance":
+      return new MockBinanceAdapter(apiKey, apiSecret, passphrase);
   }
 }

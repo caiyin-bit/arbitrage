@@ -14,7 +14,10 @@ export class HuobiAdapter implements ExchangeAdapter {
   private client: Exchange;
 
   constructor(apiKey: string, apiSecret: string) {
-    this.client = new ccxt.huobi({
+    // Use ccxt.htx (not ccxt.huobi) — htx supports the unified-account v3
+    // endpoints required after Huobi's rebrand. The legacy `huobi` binding
+    // still hits v1 swap_cross_account_info which fails for unified accounts.
+    this.client = new ccxt.htx({
       apiKey,
       secret: apiSecret,
       options: { defaultType: "swap" },
@@ -145,12 +148,11 @@ export class HuobiAdapter implements ExchangeAdapter {
   }
 
   async testConnection(): Promise<boolean> {
-    try {
-      await this.client.fetchBalance();
-      return true;
-    } catch {
-      return false;
-    }
+    // Avoid fetchBalance() — it implicitly triggers loadMarkets() which is
+    // heavy and flaky. Hit HTX's lightweight account-list endpoint instead;
+    // errors propagate so the tRPC router can surface them to the UI.
+    await (this.client as any).spotPrivateGetV1AccountAccounts();
+    return true;
   }
 
   async getFundingHistory(symbol: string, since: Date): Promise<FundingPayment[]> {

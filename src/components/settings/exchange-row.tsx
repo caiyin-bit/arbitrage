@@ -10,10 +10,18 @@ interface ExchangeRowProps {
   name: string;
   apiKey: string;
   status?: ExchangeStatus;
-  createdDaysAgo?: number;
+  createdAt?: Date | string;
   onTest?: (id: string) => void;
+  onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   testPending?: boolean;
+}
+
+function daysSince(date: Date | string | undefined): number {
+  if (!date) return 0;
+  const then = typeof date === "string" ? new Date(date) : date;
+  const ms = Date.now() - then.getTime();
+  return Math.max(0, Math.floor(ms / 86_400_000));
 }
 
 const EXCHANGE_COLORS: Record<string, string> = {
@@ -51,11 +59,13 @@ export function ExchangeRow({
   name,
   apiKey,
   status = "connected",
-  createdDaysAgo = 0,
+  createdAt,
   onTest,
+  onEdit,
   onDelete,
   testPending,
 }: ExchangeRowProps) {
+  const createdDaysAgo = daysSince(createdAt);
   const letter = name.charAt(0).toUpperCase();
   const tileColor = EXCHANGE_COLORS[name] ?? "bg-muted text-muted-foreground";
 
@@ -118,6 +128,7 @@ export function ExchangeRow({
           <Zap className="h-3.5 w-3.5" />
         </button>
         <button
+          onClick={() => onEdit?.(id)}
           className="flex items-center justify-center h-8 w-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           title="Edit"
         >

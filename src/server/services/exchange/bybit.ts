@@ -145,12 +145,10 @@ export class BybitAdapter implements ExchangeAdapter {
   }
 
   async testConnection(): Promise<boolean> {
-    try {
-      await this.client.fetchBalance();
-      return true;
-    } catch {
-      return false;
-    }
+    // Avoid fetchBalance() — it implicitly triggers loadMarkets() which is
+    // heavy and flaky. Hit Bybit's API-key introspection endpoint instead.
+    await (this.client as any).privateGetV5UserQueryApi();
+    return true;
   }
 
   async getFundingHistory(symbol: string, since: Date): Promise<FundingPayment[]> {

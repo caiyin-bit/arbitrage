@@ -39,6 +39,30 @@ export const exchangeRouter = router({
       });
     }),
 
+  update: publicProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        apiKey: z.string().min(1).optional(),
+        apiSecret: z.string().min(1).optional(),
+        passphrase: z.string().optional(),
+        feeRate: z.number().min(0).max(0.01).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const data: Record<string, unknown> = {};
+      if (input.apiKey !== undefined) data.apiKey = encrypt(input.apiKey);
+      if (input.apiSecret !== undefined) data.apiSecret = encrypt(input.apiSecret);
+      if (input.passphrase !== undefined) {
+        data.passphrase = input.passphrase ? encrypt(input.passphrase) : null;
+      }
+      if (input.feeRate !== undefined) data.feeRate = input.feeRate;
+      return ctx.prisma.exchange.update({
+        where: { id: input.id },
+        data,
+      });
+    }),
+
   testConnection: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
@@ -51,13 +75,53 @@ export const exchangeRouter = router({
         decrypt(ex.apiSecret),
         ex.passphrase ? decrypt(ex.passphrase) : undefined,
       );
-      return { success: await adapter.testConnection() };
+      try {
+        const ok = await adapter.testConnection();
+        return { success: ok, error: ok ? null : "Unknown failure (no error thrown)" };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[exchange.testConnection] ${ex.name} failed:`, err);
+        return { success: false, error: message };
+      }
     }),
 
   delete: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.prisma.exchange.delete({ where: { id: input.id } });
+      await ctx.prisma.$transaction(async (tx) => {
+        // Block delete if there's real trading history (positions, trades,
+        // settlements) — those must be handled explicitly to avoid losing
+        // auditable records.
+        const positionCount = await tx.position.count({
+          where: {
+            OR: [
+              { longExchangeId: input.id },
+              { shortExchangeId: input.id },
+            ],
+          },
+        });
+        if (positionCount > 0) {
+          throw new Error(
+            `Cannot delete exchange: ${positionCount} position(s) reference it. Close and archive positions first.`,
+          );
+        }
+        // Cascade-clean read-only history written by collectors.
+        await tx.opportunity.deleteMany({
+          where: {
+            OR: [
+              { longExchangeId: input.id },
+              { shortExchangeId: input.id },
+            ],
+          },
+        });
+        await tx.fundingRateSnapshot.deleteMany({
+          where: { exchangeId: input.id },
+        });
+        await tx.fundingRateHourly.deleteMany({
+          where: { exchangeId: input.id },
+        });
+        await tx.exchange.delete({ where: { id: input.id } });
+      });
     }),
 
   toggleEnabled: publicProcedure

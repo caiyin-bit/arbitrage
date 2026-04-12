@@ -145,12 +145,10 @@ export class GateioAdapter implements ExchangeAdapter {
   }
 
   async testConnection(): Promise<boolean> {
-    try {
-      await this.client.fetchBalance();
-      return true;
-    } catch {
-      return false;
-    }
+    // Avoid fetchBalance() — it implicitly triggers loadMarkets() which is
+    // heavy and flaky. Hit Gate's lightweight spot accounts endpoint.
+    await (this.client as any).privateSpotGetAccounts();
+    return true;
   }
 
   async getFundingHistory(symbol: string, since: Date): Promise<FundingPayment[]> {

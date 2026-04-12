@@ -9,6 +9,15 @@ import type {
 } from "./types";
 import type { FundingRate, Ticker, Balance, OHLCV } from "@/lib/types";
 
+// Convert ccxt unified symbol (e.g. "BTC/USDT:USDT") to OKX instId
+// (e.g. "BTC-USDT-SWAP"). Only handles USDT-margined perpetual swaps,
+// which is the only instrument type this app trades.
+function toInstId(symbol: string): string {
+  const [base, rest] = symbol.split("/");
+  const [quote] = rest.split(":");
+  return `${base}-${quote}-SWAP`;
+}
+
 export class OkxAdapter implements ExchangeAdapter {
   readonly name = "okx" as const;
   private client: Exchange;
@@ -23,17 +32,22 @@ export class OkxAdapter implements ExchangeAdapter {
   }
 
   async getFundingRates(symbols: string[]): Promise<FundingRate[]> {
+    // Use OKX's raw public endpoint directly to avoid ccxt's fetchFundingRate
+    // which implicitly triggers loadMarkets() (~2MB, flaky on slow networks).
     const rates: FundingRate[] = [];
     for (const symbol of symbols) {
-      const data = await this.client.fetchFundingRate(symbol);
+      const instId = toInstId(symbol);
+      const resp = await (this.client as any).publicGetPublicFundingRate({ instId });
+      const item = resp?.data?.[0];
+      if (!item) continue;
       rates.push({
         exchange: "okx",
         symbol,
-        currentRate: data.fundingRate ?? 0,
-        predictedRate: data.nextFundingRate ?? null,
-        nextSettlement: new Date(data.fundingDatetime ?? Date.now()),
+        currentRate: Number(item.fundingRate) || 0,
+        predictedRate: item.nextFundingRate ? Number(item.nextFundingRate) : null,
+        nextSettlement: new Date(Number(item.fundingTime) || Date.now()),
         intervalHours: 8,
-        timestamp: new Date(data.datetime ?? Date.now()),
+        timestamp: new Date(),
       });
     }
     return rates;
@@ -146,12 +160,11 @@ export class OkxAdapter implements ExchangeAdapter {
   }
 
   async testConnection(): Promise<boolean> {
-    try {
-      await this.client.fetchBalance();
-      return true;
-    } catch {
-      return false;
-    }
+    // Skip fetchBalance() — ccxt implicitly calls loadMarkets() which pulls
+    // ~2MB across 4 sequential instrument endpoints and is flaky over slow
+    // dev networks. Call OKX's lightweight auth-only config endpoint instead.
+    await (this.client as any).privateGetAccountConfig();
+    return true;
   }
 
   async getFundingHistory(symbol: string, since: Date): Promise<FundingPayment[]> {

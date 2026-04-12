@@ -145,12 +145,10 @@ export class BinanceAdapter implements ExchangeAdapter {
   }
 
   async testConnection(): Promise<boolean> {
-    try {
-      await this.client.fetchBalance();
-      return true;
-    } catch {
-      return false;
-    }
+    // Avoid fetchBalance() — it implicitly triggers loadMarkets() which is
+    // heavy and flaky. Hit USDM futures' lightweight auth-check endpoint.
+    await (this.client as any).fapiPrivateGetAccountConfig();
+    return true;
   }
 
   async getFundingHistory(symbol: string, since: Date): Promise<FundingPayment[]> {
