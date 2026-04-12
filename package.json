@@ -10,8 +10,9 @@
     "db:push": "dotenv -e .env.local -- prisma db push",
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "db:seed": "dotenv -e .env.local -- tsx src/server/db/seed.ts",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "dotenv -e .env.local -- vitest run",
+    "test:watch": "dotenv -e .env.local -- vitest",
+    "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
