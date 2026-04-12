@@ -73,6 +73,9 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-positive: hsl(var(--positive));
+  --color-negative: hsl(var(--negative));
+  --color-warning: hsl(var(--warning));
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
