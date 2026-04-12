@@ -199,6 +199,7 @@ model Settlement {
   position Position @relation(fields: [positionId], references: [id])
   exchange Exchange @relation(fields: [exchangeId], references: [id])
 
+  @@unique([positionId, exchangeId, side, settledAt], name: "settlement_dedup")
   @@index([positionId])
   @@map("settlements")
 }

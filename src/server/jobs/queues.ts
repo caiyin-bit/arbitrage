@@ -30,6 +30,15 @@ export const healthCheckQueue = new Queue("health-check", {
   },
 });
 
+export const settlementMonitorQueue = new Queue("settlement-monitor", {
+  connection: redis,
+  defaultJobOptions: {
+    removeOnComplete: 50,
+    removeOnFail: 100,
+    attempts: 2,
+  },
+});
+
 export async function setupSchedulers() {
   const existing = await rateCollectionQueue.getRepeatableJobs();
   for (const job of existing) {
@@ -47,6 +56,12 @@ export async function setupSchedulers() {
     await healthCheckQueue.removeRepeatableByKey(job.key);
   }
   await healthCheckQueue.add("check", {}, { repeat: { every: 300_000 } });
+
+  const settlementExisting = await settlementMonitorQueue.getRepeatableJobs();
+  for (const job of settlementExisting) {
+    await settlementMonitorQueue.removeRepeatableByKey(job.key);
+  }
+  await settlementMonitorQueue.add("scan", {}, { repeat: { every: 300_000 } });
 
   console.log("Job schedulers configured");
 }

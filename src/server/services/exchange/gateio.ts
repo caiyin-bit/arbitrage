@@ -5,6 +5,7 @@ import type {
   CloseParams,
   Order,
   SymbolInfo,
+  FundingPayment,
 } from "./types";
 import type { FundingRate, Ticker, Balance, OHLCV } from "@/lib/types";
 
@@ -149,6 +150,27 @@ export class GateioAdapter implements ExchangeAdapter {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  async getFundingHistory(symbol: string, since: Date): Promise<FundingPayment[]> {
+    try {
+      const entries = await (this.client as any).fetchFundingHistory(
+        symbol,
+        since.getTime(),
+      );
+      return (entries as any[]).map((e) => ({
+        symbol: e.symbol ?? symbol,
+        amount: e.amount ?? 0,
+        fundingRate: e.info?.fundingRate ? Number(e.info.fundingRate) : 0,
+        settledAt: new Date(e.timestamp ?? Date.now()),
+        exchangeSettlementId: e.id,
+      }));
+    } catch (err) {
+      if ((err as Error)?.message?.includes("not supported")) {
+        throw new Error("not implemented");
+      }
+      throw err;
     }
   }
 

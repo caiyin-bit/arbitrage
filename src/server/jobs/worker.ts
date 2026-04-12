@@ -42,6 +42,20 @@ export function startWorker() {
   healthWorker.on("completed", (job) => console.log("[health-worker] completed", job.id));
   healthWorker.on("failed", (job, err) => console.error("[health-worker] failed", job?.id, err.message));
 
+  const settlementWorker = new Worker(
+    "settlement-monitor",
+    async (job) => {
+      if (job.name === "scan") {
+        const { handleMonitorSettlement } = await import("./monitor-settlement");
+        await handleMonitorSettlement();
+      }
+    },
+    { connection: redis, concurrency: 1 },
+  );
+
+  settlementWorker.on("completed", (job) => console.log("[settlement-worker] completed", job.id));
+  settlementWorker.on("failed", (job, err) => console.error("[settlement-worker] failed", job?.id, err.message));
+
   console.log("BullMQ worker started");
-  return { worker, healthWorker };
+  return { worker, healthWorker, settlementWorker };
 }

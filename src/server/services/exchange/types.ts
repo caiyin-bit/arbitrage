@@ -1,5 +1,14 @@
 import type { FundingRate, Ticker, Balance, OHLCV } from "@/lib/types";
 
+export interface FundingPayment {
+  symbol: string;
+  /** Positive = received, negative = paid */
+  amount: number;
+  fundingRate: number;
+  settledAt: Date;
+  exchangeSettlementId?: string;
+}
+
 export interface OpenParams {
   symbol: string;
   side: "long" | "short";
@@ -65,4 +74,7 @@ export interface ExchangeAdapter {
 
   // Connection test
   testConnection(): Promise<boolean>;
+
+  /** Fetch recent funding payments for a symbol (used by the settlement ingest). */
+  getFundingHistory(symbol: string, since: Date): Promise<FundingPayment[]>;
 }
