@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,4 +5,209 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model Exchange {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  apiKey     String   @map("api_key")
+  apiSecret  String   @map("api_secret")
+  passphrase String?
+  isEnabled  Boolean  @default(true) @map("is_enabled")
+  feeRate    Decimal  @default(0.001) @map("fee_rate") @db.Decimal(10, 6)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  fundingRateSnapshots FundingRateSnapshot[]
+  opportunitiesLong    Opportunity[]         @relation("LongExchange")
+  opportunitiesShort   Opportunity[]         @relation("ShortExchange")
+  positionsLong        Position[]            @relation("PositionLongExchange")
+  positionsShort       Position[]            @relation("PositionShortExchange")
+  settlements          Settlement[]
+  tradeLogs            TradeLog[]
+
+  @@map("exchanges")
+}
+
+model FundingRateSnapshot {
+  id             String   @id @default(uuid())
+  exchangeId     String   @map("exchange_id")
+  symbol         String
+  currentRate    Decimal  @map("current_rate") @db.Decimal(18, 10)
+  predictedRate  Decimal? @map("predicted_rate") @db.Decimal(18, 10)
+  nextSettlement DateTime @map("next_settlement")
+  intervalHours  Int      @map("interval_hours")
+  collectedAt    DateTime @map("collected_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  exchange Exchange @relation(fields: [exchangeId], references: [id])
+
+  @@index([symbol, collectedAt])
+  @@index([exchangeId, symbol])
+  @@map("funding_rate_snapshots")
+}
+
+model FundingRateHourly {
+  id          String   @id @default(uuid())
+  exchangeId  String   @map("exchange_id")
+  symbol      String
+  hour        DateTime
+  avgRate     Decimal  @map("avg_rate") @db.Decimal(18, 10)
+  maxRate     Decimal  @map("max_rate") @db.Decimal(18, 10)
+  minRate     Decimal  @map("min_rate") @db.Decimal(18, 10)
+  sampleCount Int      @map("sample_count")
+
+  @@unique([exchangeId, symbol, hour])
+  @@index([symbol, hour])
+  @@map("funding_rate_hourly")
+}
+
+enum OpportunityStatus {
+  DETECTED
+  NOTIFIED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Opportunity {
+  id              String            @id @default(uuid())
+  symbol          String
+  longExchangeId  String            @map("long_exchange_id")
+  shortExchangeId String            @map("short_exchange_id")
+  longRate        Decimal           @map("long_rate") @db.Decimal(18, 10)
+  shortRate       Decimal           @map("short_rate") @db.Decimal(18, 10)
+  rateSpread      Decimal           @map("rate_spread") @db.Decimal(18, 10)
+  annualizedYield Decimal           @map("annualized_yield") @db.Decimal(10, 4)
+  suggestedSize   Decimal           @map("suggested_size") @db.Decimal(20, 8)
+  status          OpportunityStatus @default(DETECTED)
+  cooldownUntil   DateTime?         @map("cooldown_until")
+  detectedAt      DateTime          @map("detected_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  longExchange  Exchange   @relation("LongExchange", fields: [longExchangeId], references: [id])
+  shortExchange Exchange   @relation("ShortExchange", fields: [shortExchangeId], references: [id])
+  positions     Position[]
+
+  @@index([symbol, status])
+  @@index([detectedAt])
+  @@map("opportunities")
+}
+
+enum PositionStatus {
+  OPENING
+  OPEN
+  CLOSING
+  CLOSED
+  RESCUE
+}
+
+enum CloseReason {
+  MANUAL
+  RATE_REVERSAL
+  TAKE_PROFIT
+  RISK_CONTROL
+}
+
+model Position {
+  id                 String         @id @default(uuid())
+  opportunityId      String         @map("opportunity_id")
+  symbol             String
+  longExchangeId     String         @map("long_exchange_id")
+  longSize           Decimal        @map("long_size") @db.Decimal(20, 8)
+  longAvgEntryPrice  Decimal        @map("long_avg_entry_price") @db.Decimal(20, 8)
+  shortExchangeId    String         @map("short_exchange_id")
+  shortSize          Decimal        @map("short_size") @db.Decimal(20, 8)
+  shortAvgEntryPrice Decimal        @map("short_avg_entry_price") @db.Decimal(20, 8)
+  status             PositionStatus @default(OPENING)
+  closeReason        CloseReason?   @map("close_reason")
+  openedAt           DateTime       @map("opened_at")
+  closedAt           DateTime?      @map("closed_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  opportunity   Opportunity  @relation(fields: [opportunityId], references: [id])
+  longExchange  Exchange     @relation("PositionLongExchange", fields: [longExchangeId], references: [id])
+  shortExchange Exchange     @relation("PositionShortExchange", fields: [shortExchangeId], references: [id])
+  settlements   Settlement[]
+  tradeLogs     TradeLog[]
+
+  @@index([status])
+  @@index([symbol])
+  @@map("positions")
+}
+
+enum TradeSide {
+  LONG
+  SHORT
+}
+
+enum TradeAction {
+  OPEN
+  CLOSE
+  RESCUE
+}
+
+enum OrderType {
+  MARKET
+  LIMIT_IOC
+}
+
+enum TradeStatus {
+  PENDING
+  FILLED
+  PARTIAL
+  FAILED
+}
+
+model TradeLog {
+  id              String      @id @default(uuid())
+  positionId      String      @map("position_id")
+  exchangeId      String      @map("exchange_id")
+  executionId     String      @map("execution_id")
+  clientOrderId   String      @unique @map("client_order_id")
+  side            TradeSide
+  action          TradeAction
+  orderType       OrderType   @map("order_type")
+  price           Decimal     @db.Decimal(20, 8)
+  signedQty       Decimal     @map("signed_qty") @db.Decimal(20, 8)
+  fee             Decimal     @db.Decimal(20, 8)
+  exchangeOrderId String?     @map("exchange_order_id")
+  status          TradeStatus @default(PENDING)
+  executedAt      DateTime?   @map("executed_at")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  position Position @relation(fields: [positionId], references: [id])
+  exchange Exchange @relation(fields: [exchangeId], references: [id])
+
+  @@index([positionId, side])
+  @@index([executionId])
+  @@index([clientOrderId])
+  @@map("trade_logs")
+}
+
+model Settlement {
+  id            String    @id @default(uuid())
+  positionId    String    @map("position_id")
+  exchangeId    String    @map("exchange_id")
+  side          TradeSide
+  fundingRate   Decimal   @map("funding_rate") @db.Decimal(18, 10)
+  fundingAmount Decimal   @map("funding_amount") @db.Decimal(20, 8)
+  settledAt     DateTime  @map("settled_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  position Position @relation(fields: [positionId], references: [id])
+  exchange Exchange @relation(fields: [exchangeId], references: [id])
+
+  @@index([positionId])
+  @@map("settlements")
+}
+
+model Setting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
 }
