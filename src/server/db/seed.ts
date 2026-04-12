@@ -19,6 +19,11 @@ const DEFAULT_SETTINGS: Array<{
   { key: "volatility_threshold_1h", value: 0.05, description: "1h price volatility pause threshold (5%)" },
   { key: "volatility_threshold_24h", value: 0.15, description: "24h price volatility pause threshold (15%)" },
   { key: "backtest_slippage", value: 0.0005, description: "Backtest slippage assumption (0.05%)" },
+  {
+    key: "monitored_symbols",
+    value: ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT", "BNB/USDT:USDT", "XRP/USDT:USDT"],
+    description: "Baseline list of symbols monitored for volatility pause",
+  },
 ];
 
 async function main() {

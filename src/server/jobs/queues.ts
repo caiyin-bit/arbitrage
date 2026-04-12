@@ -21,6 +21,15 @@ export const reconcileRetryQueue = new Queue("reconcile-retry", {
   },
 });
 
+export const healthCheckQueue = new Queue("health-check", {
+  connection: redis,
+  defaultJobOptions: {
+    removeOnComplete: 50,
+    removeOnFail: 100,
+    attempts: 2,
+  },
+});
+
 export async function setupSchedulers() {
   const existing = await rateCollectionQueue.getRepeatableJobs();
   for (const job of existing) {
@@ -32,6 +41,12 @@ export async function setupSchedulers() {
     {},
     { repeat: { every: 180_000 } },
   );
+
+  const healthExisting = await healthCheckQueue.getRepeatableJobs();
+  for (const job of healthExisting) {
+    await healthCheckQueue.removeRepeatableByKey(job.key);
+  }
+  await healthCheckQueue.add("check", {}, { repeat: { every: 300_000 } });
 
   console.log("Job schedulers configured");
 }

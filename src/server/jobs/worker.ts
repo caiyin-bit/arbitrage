@@ -28,6 +28,20 @@ export function startWorker() {
     console.error("[worker] Job %s failed:", job?.id, err.message);
   });
 
+  const healthWorker = new Worker(
+    "health-check",
+    async (job) => {
+      if (job.name === "check") {
+        const { handleCheckHealth } = await import("./check-health");
+        await handleCheckHealth();
+      }
+    },
+    { connection: redis, concurrency: 1 },
+  );
+
+  healthWorker.on("completed", (job) => console.log("[health-worker] completed", job.id));
+  healthWorker.on("failed", (job, err) => console.error("[health-worker] failed", job?.id, err.message));
+
   console.log("BullMQ worker started");
-  return worker;
+  return { worker, healthWorker };
 }
