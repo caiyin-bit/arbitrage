@@ -4,6 +4,7 @@ import { BinanceAdapter } from "./binance";
 import { OkxAdapter } from "./okx";
 import { BybitAdapter } from "./bybit";
 import { GateioAdapter } from "./gateio";
+import { HuobiAdapter } from "./huobi";
 
 export function createAdapter(
   name: ExchangeName,
@@ -20,5 +21,7 @@ export function createAdapter(
       return new BybitAdapter(apiKey, apiSecret);
     case "gateio":
       return new GateioAdapter(apiKey, apiSecret);
+    case "huobi":
+      return new HuobiAdapter(apiKey, apiSecret);
   }
 }

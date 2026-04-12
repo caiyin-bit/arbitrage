@@ -21,6 +21,7 @@ const EXCHANGE_COLORS: Record<string, string> = {
   okx: "bg-primary/20 text-primary",
   bybit: "bg-positive/20 text-positive",
   gateio: "bg-negative/20 text-negative",
+  huobi: "bg-primary/20 text-primary",
 };
 
 function StatusDot({ status }: { status: ExchangeStatus }) {

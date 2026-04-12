@@ -8,17 +8,17 @@ import { cn } from "@/lib/utils";
 // Placeholder rows rendered only when the query returns empty data.
 // Remove or gate this once the backend supplies real rate matrix data.
 const NO_DATA_PLACEHOLDER = [
-  { symbol: "BTC/USDT", rates: { binance: 0.0001, okx: -0.0002, bybit: 0.00015, gateio: -0.0001 } },
-  { symbol: "ETH/USDT", rates: { binance: 0.00008, okx: 0.0003, bybit: -0.0001, gateio: 0.0002 } },
-  { symbol: "SOL/USDT", rates: { binance: 0.0002, okx: -0.0003, bybit: 0.00025, gateio: -0.00015 } },
-  { symbol: "BNB/USDT", rates: { binance: 0.00015, okx: 0.0001, bybit: -0.0002, gateio: 0.00018 } },
-  { symbol: "XRP/USDT", rates: { binance: -0.0001, okx: 0.00025, bybit: 0.0003, gateio: -0.0002 } },
-  { symbol: "DOGE/USDT", rates: { binance: 0.0003, okx: -0.00015, bybit: 0.0001, gateio: 0.00022 } },
-  { symbol: "ADA/USDT", rates: { binance: 0.00012, okx: 0.0002, bybit: -0.00025, gateio: 0.0003 } },
-  { symbol: "AVAX/USDT", rates: { binance: -0.0002, okx: 0.00018, bybit: 0.0002, gateio: -0.0001 } },
+  { symbol: "BTC/USDT", rates: { binance: 0.0001, okx: -0.0002, bybit: 0.00015, gateio: -0.0001, huobi: 0.00012 } },
+  { symbol: "ETH/USDT", rates: { binance: 0.00008, okx: 0.0003, bybit: -0.0001, gateio: 0.0002, huobi: 0.00009 } },
+  { symbol: "SOL/USDT", rates: { binance: 0.0002, okx: -0.0003, bybit: 0.00025, gateio: -0.00015, huobi: 0.00018 } },
+  { symbol: "BNB/USDT", rates: { binance: 0.00015, okx: 0.0001, bybit: -0.0002, gateio: 0.00018, huobi: -0.00005 } },
+  { symbol: "XRP/USDT", rates: { binance: -0.0001, okx: 0.00025, bybit: 0.0003, gateio: -0.0002, huobi: 0.00021 } },
+  { symbol: "DOGE/USDT", rates: { binance: 0.0003, okx: -0.00015, bybit: 0.0001, gateio: 0.00022, huobi: 0.00011 } },
+  { symbol: "ADA/USDT", rates: { binance: 0.00012, okx: 0.0002, bybit: -0.00025, gateio: 0.0003, huobi: 0.00008 } },
+  { symbol: "AVAX/USDT", rates: { binance: -0.0002, okx: 0.00018, bybit: 0.0002, gateio: -0.0001, huobi: 0.00016 } },
 ];
 
-const EXCHANGES = ["binance", "okx", "bybit", "gateio"] as const;
+const EXCHANGES = ["binance", "okx", "bybit", "gateio", "huobi"] as const;
 
 interface RateRow {
   symbol: string;

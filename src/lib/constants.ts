@@ -3,6 +3,7 @@ export const EXCHANGE_NAMES = [
   "okx",
   "bybit",
   "gateio",
+  "huobi",
 ] as const;
 
 export type ExchangeName = (typeof EXCHANGE_NAMES)[number];

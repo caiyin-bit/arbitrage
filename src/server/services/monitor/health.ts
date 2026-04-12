@@ -8,7 +8,7 @@ import type { ExchangeAdapter } from "@/server/services/exchange/types";
 import type { ExchangeName } from "@/lib/constants";
 import type { OHLCV } from "@/lib/types";
 
-const PRICE_SOURCE_PRIORITY: ExchangeName[] = ["binance", "okx", "bybit", "gateio"];
+const PRICE_SOURCE_PRIORITY: ExchangeName[] = ["binance", "okx", "bybit", "huobi", "gateio"];
 
 async function buildMonitoredSymbols(): Promise<string[]> {
   const [openPositions, baselineSetting] = await Promise.all([
