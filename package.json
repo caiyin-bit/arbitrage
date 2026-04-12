@@ -24,6 +24,7 @@
     "ccxt": "^4.5.48",
     "clsx": "^2.1.1",
     "ioredis": "^5.10.1",
+    "lucide-react": "^1.8.0",
     "next": "16.2.3",
     "next-themes": "^0.4.6",
     "prisma": "^6.19.3",
