@@ -11,6 +11,16 @@ export const rateCollectionQueue = new Queue("rate-collection", {
   },
 });
 
+export const reconcileRetryQueue = new Queue("reconcile-retry", {
+  connection: redis,
+  defaultJobOptions: {
+    removeOnComplete: 50,
+    removeOnFail: 200,
+    attempts: 5,
+    backoff: { type: "exponential", delay: 5000 },
+  },
+});
+
 export async function setupSchedulers() {
   const existing = await rateCollectionQueue.getRepeatableJobs();
   for (const job of existing) {
