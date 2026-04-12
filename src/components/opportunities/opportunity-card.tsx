@@ -1,54 +1,168 @@
 "use client";
 
+import { ArrowRight, Bookmark } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ToneBadge } from "@/components/ui/tone-badge";
+import { cn } from "@/lib/utils";
 import { formatRate } from "@/lib/utils";
+
+// Placeholder cards rendered only when the query returns no opportunities.
+// Remove once backend begins detecting real opportunities.
+const NO_DATA_PLACEHOLDER = [
+  {
+    id: "ph1",
+    symbol: "BTC/USDT",
+    annualizedYield: 0.482,
+    longExchange: { name: "okx" },
+    shortExchange: { name: "binance" },
+    longRate: -0.0002,
+    shortRate: 0.0001,
+    rateSpread: 0.0003,
+    isNew: true,
+  },
+  {
+    id: "ph2",
+    symbol: "ETH/USDT",
+    annualizedYield: 0.319,
+    longExchange: { name: "bybit" },
+    shortExchange: { name: "okx" },
+    longRate: -0.0001,
+    shortRate: 0.0003,
+    rateSpread: 0.0004,
+    isNew: false,
+  },
+  {
+    id: "ph3",
+    symbol: "SOL/USDT",
+    annualizedYield: 0.251,
+    longExchange: { name: "gateio" },
+    shortExchange: { name: "binance" },
+    longRate: -0.0003,
+    shortRate: 0.00025,
+    rateSpread: 0.00055,
+    isNew: false,
+  },
+];
+
+interface OppCardProps {
+  id: string;
+  symbol: string;
+  annualizedYield: number;
+  longExchange: { name: string };
+  shortExchange: { name: string };
+  longRate: number;
+  shortRate: number;
+  rateSpread: number;
+  isNew?: boolean;
+  isFirst?: boolean;
+  isPlaceholder?: boolean;
+}
+
+function OpportunityCard({
+  symbol,
+  annualizedYield,
+  longExchange,
+  shortExchange,
+  longRate,
+  shortRate,
+  isNew,
+  isFirst,
+  isPlaceholder,
+}: OppCardProps) {
+  return (
+    <div
+      className={cn(
+        "bg-muted border border-border rounded-lg p-3.5 flex flex-col gap-3",
+        isFirst && "border-primary/30",
+        isPlaceholder && "opacity-50",
+      )}
+    >
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-foreground">{symbol}</span>
+          {isNew && <ToneBadge tone="neutral">NEW</ToneBadge>}
+        </div>
+        <span className="bg-positive/10 text-positive rounded-md px-2.5 py-1 font-mono text-[11px] font-bold">
+          {(annualizedYield * 100).toFixed(1)}% APY
+        </span>
+      </div>
+
+      {/* Flow row */}
+      <div className="flex items-center justify-between gap-2">
+        {/* Long leg */}
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[9px] font-bold tracking-wide text-positive">LONG</span>
+          <span className="text-xs font-semibold text-foreground capitalize">
+            {longExchange.name}
+          </span>
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {formatRate(longRate)}
+          </span>
+        </div>
+
+        {/* Arrow */}
+        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+
+        {/* Short leg */}
+        <div className="flex flex-col gap-0.5 text-right">
+          <span className="text-[9px] font-bold tracking-wide text-negative">SHORT</span>
+          <span className="text-xs font-semibold text-foreground capitalize">
+            {shortExchange.name}
+          </span>
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {formatRate(shortRate)}
+          </span>
+        </div>
+      </div>
+
+      {/* Footer row */}
+      <div className="flex items-center gap-2">
+        <button className="flex-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+          Open Position
+        </button>
+        <button className="flex items-center justify-center h-[34px] w-[34px] rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-card transition-colors flex-shrink-0">
+          <Bookmark className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function OpportunityList() {
   const { data: opportunities, isLoading } = trpc.opportunity.list.useQuery(
-    { status: "DETECTED", limit: 20 },
+    { status: "DETECTED", limit: 4 },
     { refetchInterval: 30_000 },
   );
 
-  if (isLoading) return <p className="text-muted-foreground">Loading...</p>;
-  if (!opportunities?.length)
-    return <p className="text-muted-foreground">No opportunities detected yet.</p>;
+  const isPlaceholder = !opportunities || opportunities.length === 0;
+  const items = isPlaceholder
+    ? NO_DATA_PLACEHOLDER
+    : opportunities.slice(0, 4).map((o) => ({
+        id: o.id,
+        symbol: o.symbol,
+        annualizedYield: Number(o.annualizedYield),
+        longExchange: o.longExchange,
+        shortExchange: o.shortExchange,
+        longRate: Number(o.longRate),
+        shortRate: Number(o.shortRate),
+        rateSpread: Number(o.rateSpread),
+        isNew: false,
+      }));
+
+  if (isLoading) {
+    return <p className="text-sm text-muted-foreground p-4">Loading...</p>;
+  }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {opportunities.map((opp) => (
-        <Card key={opp.id} className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-semibold">{opp.symbol}</span>
-            <Badge style={{ backgroundColor: "hsl(var(--positive) / 0.1)", color: "hsl(var(--positive))" }}>
-              {(Number(opp.annualizedYield) * 100).toFixed(1)}% APY
-            </Badge>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Long</span>
-              <div className="font-medium">{opp.longExchange.name}</div>
-              <div className="font-mono" style={{ color: "hsl(var(--positive))" }}>
-                {formatRate(Number(opp.longRate))}
-              </div>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Short</span>
-              <div className="font-medium">{opp.shortExchange.name}</div>
-              <div className="font-mono" style={{ color: "hsl(var(--negative))" }}>
-                {formatRate(Number(opp.shortRate))}
-              </div>
-            </div>
-          </div>
-          <div className="mt-3 text-sm text-muted-foreground">
-            Spread: <span className="font-mono">{formatRate(Number(opp.rateSpread))}</span>
-          </div>
-          <Button className="w-full mt-4" variant="default" disabled>
-            Open Position (Plan 2)
-          </Button>
-        </Card>
+    <div className="flex flex-col gap-2.5">
+      {items.map((opp, i) => (
+        <OpportunityCard
+          key={opp.id}
+          {...opp}
+          isFirst={i === 0}
+          isPlaceholder={isPlaceholder}
+        />
       ))}
     </div>
   );
