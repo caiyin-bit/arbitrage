@@ -1,5 +1,5 @@
 {
-  "name": "arbitrage-init",
+  "name": "funding-rate-arbitrage",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,7 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@prisma/client": "^7.7.0",
+    "@prisma/client": "^6.19.3",
     "@tanstack/react-query": "^5.99.0",
     "@trpc/client": "^11.16.0",
     "@trpc/next": "^11.16.0",
@@ -20,7 +20,7 @@
     "ioredis": "^5.10.1",
     "next": "16.2.3",
     "next-themes": "^0.4.6",
-    "prisma": "^7.7.0",
+    "prisma": "^6.19.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
@@ -40,5 +40,14 @@
     "tsx": "^4.21.0",
     "typescript": "^5",
     "vitest": "^4.1.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "msgpackr-extract",
+      "@prisma/client"
+    ]
   }
 }
