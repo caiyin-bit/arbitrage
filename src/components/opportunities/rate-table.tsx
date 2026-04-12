@@ -18,7 +18,7 @@ const NO_DATA_PLACEHOLDER = [
   { symbol: "AVAX/USDT", rates: { binance: -0.0002, okx: 0.00018, bybit: 0.0002, gateio: -0.0001, huobi: 0.00016 } },
 ];
 
-const EXCHANGES = ["binance", "okx", "bybit", "gateio", "huobi"] as const;
+const PLACEHOLDER_EXCHANGES = ["binance", "okx", "bybit", "gateio", "huobi"] as const;
 
 interface RateRow {
   symbol: string;
@@ -27,31 +27,39 @@ interface RateRow {
   apy: number;
 }
 
-function buildRows(rawRates: Array<{ symbol: string; exchange: string; rate: number }>): RateRow[] {
+function computeRow(
+  symbol: string,
+  rates: Partial<Record<string, number>>,
+): RateRow {
+  const vals = Object.values(rates).filter((v): v is number => v !== undefined);
+  if (vals.length < 2) {
+    // Not enough data points to compute a cross-exchange spread.
+    return { symbol, rates, spread: 0, apy: 0 };
+  }
+  const max = Math.max(...vals);
+  const min = Math.min(...vals);
+  const spread = max - min;
+  const apy = spread * 3 * 365 * 100; // 3 settlements/day estimate
+  return { symbol, rates, spread, apy };
+}
+
+function buildRows(
+  rawRates: Array<{ symbol: string; exchange: string; rate: number }>,
+): RateRow[] {
   const bySymbol = new Map<string, Partial<Record<string, number>>>();
   for (const r of rawRates) {
     if (!bySymbol.has(r.symbol)) bySymbol.set(r.symbol, {});
     bySymbol.get(r.symbol)![r.exchange] = r.rate;
   }
-  return Array.from(bySymbol.entries()).map(([symbol, rates]) => {
-    const vals = Object.values(rates).filter((v): v is number => v !== undefined);
-    const max = Math.max(...vals);
-    const min = Math.min(...vals);
-    const spread = max - min;
-    const apy = spread * 3 * 365 * 100; // 3 settlements/day estimate
-    return { symbol, rates, spread, apy };
-  });
+  return Array.from(bySymbol.entries()).map(([symbol, rates]) =>
+    computeRow(symbol, rates),
+  );
 }
 
 function buildPlaceholderRows(): RateRow[] {
-  return NO_DATA_PLACEHOLDER.map(({ symbol, rates }) => {
-    const vals = Object.values(rates);
-    const max = Math.max(...vals);
-    const min = Math.min(...vals);
-    const spread = max - min;
-    const apy = spread * 3 * 365 * 100;
-    return { symbol, rates, spread, apy };
-  });
+  return NO_DATA_PLACEHOLDER.map(({ symbol, rates }) =>
+    computeRow(symbol, rates),
+  );
 }
 
 export function RateTable() {
@@ -60,20 +68,32 @@ export function RateTable() {
     { refetchInterval: 30_000 },
   );
 
-  const rows: RateRow[] =
-    rawRates && rawRates.length > 0
-      ? buildRows(rawRates as Array<{ symbol: string; exchange: string; rate: number }>)
-      : buildPlaceholderRows();
-
   const isPlaceholder = !rawRates || rawRates.length === 0;
+
+  const rows: RateRow[] = isPlaceholder
+    ? buildPlaceholderRows()
+    : buildRows(rawRates as Array<{ symbol: string; exchange: string; rate: number }>);
+
+  // Column list is derived from the actual data so synthetic or future
+  // exchanges show up without needing a code change. Placeholder mode uses
+  // the canonical five-exchange ordering.
+  const exchanges: readonly string[] = isPlaceholder
+    ? PLACEHOLDER_EXCHANGES
+    : Array.from(
+        new Set(
+          (rawRates as Array<{ exchange: string }>).map((r) => r.exchange),
+        ),
+      ).sort();
+
+  const gridTemplate = `96px repeat(${exchanges.length}, 1fr) 92px 80px`;
 
   return (
     <SectionCard
       title="Funding Rate Matrix"
-      subtitle={`Current rates · ${rows.length} symbols · ${EXCHANGES.length} exchanges`}
+      subtitle={`Current rates · ${rows.length} symbols · ${exchanges.length} exchanges`}
       action={
         <ToneBadge tone="info">
-          {rows.length} symbols · {EXCHANGES.length} exchanges
+          {rows.length} symbols · {exchanges.length} exchanges
         </ToneBadge>
       }
       bodyClassName="p-0"
@@ -83,11 +103,11 @@ export function RateTable() {
       ) : (
         <div className="-mx-0 overflow-hidden rounded-b-xl">
           {/* Header */}
-          <div className="grid bg-muted px-5 py-2.5" style={{ gridTemplateColumns: "96px 1fr 1fr 1fr 1fr 92px 80px" }}>
+          <div className="grid bg-muted px-5 py-2.5" style={{ gridTemplateColumns: gridTemplate }}>
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Symbol
             </span>
-            {EXCHANGES.map((ex) => (
+            {exchanges.map((ex) => (
               <span
                 key={ex}
                 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-right"
@@ -105,9 +125,9 @@ export function RateTable() {
 
           {/* Rows */}
           {rows.map((row, i) => {
-            const rateValues = EXCHANGES.map((ex) => row.rates[ex] ?? null).filter(
-              (v): v is number => v !== null,
-            );
+            const rateValues = exchanges
+              .map((ex) => row.rates[ex] ?? null)
+              .filter((v): v is number => v !== null);
             const minRate = rateValues.length ? Math.min(...rateValues) : null;
 
             return (
@@ -118,10 +138,10 @@ export function RateTable() {
                   i < rows.length - 1 && "border-b border-border/50",
                   isPlaceholder && "opacity-50",
                 )}
-                style={{ gridTemplateColumns: "96px 1fr 1fr 1fr 1fr 92px 80px" }}
+                style={{ gridTemplateColumns: gridTemplate }}
               >
                 <span className="text-xs font-semibold text-foreground">{row.symbol}</span>
-                {EXCHANGES.map((ex) => {
+                {exchanges.map((ex) => {
                   const rate = row.rates[ex] ?? null;
                   const isDim = rate !== null && rate === minRate;
                   return (
