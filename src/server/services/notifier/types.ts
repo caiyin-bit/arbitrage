@@ -32,6 +32,19 @@ export type NotificationEvent =
       symbol: string;
       side: "long" | "short";
       amount: number;
+    }
+  | {
+      kind: "deploy_succeeded";
+      tag: string;
+      previousTag: string | null;
+      durationSec: number;
+    }
+  | {
+      kind: "deploy_failed";
+      tag: string;
+      previousTag: string | null;
+      rolledBack: boolean;
+      reason: string;
     };
 
 export interface NotifierProvider {

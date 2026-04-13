@@ -25,5 +25,15 @@ export function formatEvent(event: NotificationEvent): string {
       return `⏸ Volatility pause: ${event.symbol}\n${event.reason} — change ${pct(event.change)}`;
     case "settlement_recorded":
       return `💰 Settlement: ${event.symbol} ${event.side} ${signed(event.amount)}`;
+    case "deploy_succeeded":
+      if (event.previousTag) {
+        return `🚀 Deploy succeeded: ${event.tag}\nPrevious: ${event.previousTag}\nDuration: ${event.durationSec}s`;
+      }
+      return `🚀 Deploy succeeded: ${event.tag}\nFirst deploy\nDuration: ${event.durationSec}s`;
+    case "deploy_failed":
+      if (event.rolledBack && event.previousTag) {
+        return `❌ Deploy failed: ${event.tag}\nRolled back to ${event.previousTag}\nReason: ${event.reason}`;
+      }
+      return `❌ Deploy failed: ${event.tag}\nService may be down — manual intervention required\nReason: ${event.reason}`;
   }
 }
