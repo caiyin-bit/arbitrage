@@ -9,7 +9,7 @@ const DEPLOY_SCRIPT = resolve(__dirname, "../../scripts/deploy.sh");
 
 function sh(
   cmd: string,
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv; allowFail?: boolean } = {},
+  opts: { cwd?: string; env?: Partial<NodeJS.ProcessEnv>; allowFail?: boolean } = {},
 ) {
   const result = spawnSync("bash", ["-c", cmd], {
     cwd: opts.cwd,
