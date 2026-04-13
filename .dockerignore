@@ -1,0 +1,45 @@
+# Version control
+.git
+.gitignore
+
+# Node artifacts
+node_modules
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Build outputs
+.next
+out
+dist
+build
+
+# Env files (must never bake into image; prod env injected by compose env_file)
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Editor & OS
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Tests
+coverage
+playwright-report
+
+# Docs that don't need to be in image
+docs
+*.md
+!README.md
+
+# Dev-only tooling & docker
+.claude
+docker-compose.yml
+Dockerfile.dev
+dev.sh
+
+# CI config
+.github
