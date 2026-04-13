@@ -1,0 +1,28 @@
+services:
+  app:
+    image: ${TAG:-fake-app-good}
+    ports:
+      - "127.0.0.1:33000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://arbitrage:test@postgres:5432/arbitrage
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: arbitrage
+      POSTGRES_USER: arbitrage
+      POSTGRES_PASSWORD: test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arbitrage"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10

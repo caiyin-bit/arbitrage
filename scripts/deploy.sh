@@ -13,6 +13,8 @@
 #   HEALTH_INTERVAL  default 12
 #   NOTIFY_CMD       default $DEPLOY_ROOT/scripts/notify-deploy.sh
 #   SKIP_PULL        default 0; set to 1 to skip `docker pull` (integration tests)
+#   SKIP_MIGRATE     default 0; set to 1 to skip prisma migrate deploy (integration tests)
+#   HEALTH_URL       default http://127.0.0.1:3000/api/health
 #
 set -euo pipefail
 
@@ -25,6 +27,7 @@ fi
 DEPLOY_ROOT="${DEPLOY_ROOT:-/srv/arbitrage}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-5}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-12}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/api/health}"
 NOTIFY_CMD="${NOTIFY_CMD:-$DEPLOY_ROOT/scripts/notify-deploy.sh}"
 COMPOSE_FILE="$DEPLOY_ROOT/docker-compose.prod.yml"
 ENV_FILE="$DEPLOY_ROOT/.env.production"
@@ -87,15 +90,19 @@ fi
 # ---------------------------------------------------------------------------
 # Step 3: Migration (in a throwaway container, does not touch running app)
 # ---------------------------------------------------------------------------
-log "step 3: prisma migrate deploy (throwaway container)"
-if ! TAG="$TAG" compose run --rm \
-       --no-deps \
-       -e DATABASE_URL="postgresql://arbitrage:${DB_PASSWORD}@postgres:5432/arbitrage" \
-       app node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma; then
-  log "ERROR: migration failed — NOT restarting app. Manual intervention required."
-  echo "$TAG" > "$FAILED_TAG_FILE"
-  notify "deploy_failed" "prisma migrate deploy failed — check logs at $DEPLOY_ROOT"
-  exit 3
+if [[ "${SKIP_MIGRATE:-0}" != "1" ]]; then
+  log "step 3: prisma migrate deploy (throwaway container)"
+  if ! TAG="$TAG" compose run --rm \
+         --no-deps \
+         -e DATABASE_URL="postgresql://arbitrage:${DB_PASSWORD}@postgres:5432/arbitrage" \
+         app node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma; then
+    log "ERROR: migration failed — NOT restarting app. Manual intervention required."
+    echo "$TAG" > "$FAILED_TAG_FILE"
+    notify "deploy_failed" "prisma migrate deploy failed — check logs at $DEPLOY_ROOT"
+    exit 3
+  fi
+else
+  log "step 3: SKIP_MIGRATE=1, skipping prisma migrate deploy"
 fi
 
 # ---------------------------------------------------------------------------
@@ -111,7 +118,7 @@ log "step 5: health check ($HEALTH_ATTEMPTS x ${HEALTH_INTERVAL}s)"
 HEALTH_OK=0
 for i in $(seq 1 "$HEALTH_ATTEMPTS"); do
   sleep "$HEALTH_INTERVAL"
-  if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then
+  if curl -fsS "$HEALTH_URL" > /dev/null; then
     log "  attempt $i/$HEALTH_ATTEMPTS: OK"
     HEALTH_OK=$((HEALTH_OK + 1))
   else
