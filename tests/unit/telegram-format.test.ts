@@ -47,7 +47,7 @@ describe("formatEvent — deploy events", () => {
     });
     expect(msg).toContain("v0.1.0");
     expect(msg).toContain("v0.0.9");
-    expect(msg).toContain("87");
+    expect(msg).toContain("87s");
     expect(msg).toMatch(/deploy/i);
   });
 
@@ -60,7 +60,8 @@ describe("formatEvent — deploy events", () => {
     });
     expect(msg).toContain("v0.1.0");
     expect(msg).not.toContain("null");
-    expect(msg).toMatch(/first deploy|初次/i);
+    expect(msg).toContain("First deploy");
+    expect(msg).toContain("92s");
   });
 
   it("formats deploy_failed with rollback", () => {
@@ -73,7 +74,7 @@ describe("formatEvent — deploy events", () => {
     });
     expect(msg).toContain("v0.1.0");
     expect(msg).toContain("v0.0.9");
-    expect(msg).toMatch(/rolled back|回滚/i);
+    expect(msg).toContain("Rolled back");
     expect(msg).toContain("health check failed");
   });
 
@@ -86,6 +87,6 @@ describe("formatEvent — deploy events", () => {
       reason: "migration crashed",
     });
     expect(msg).toContain("v0.1.0");
-    expect(msg).toMatch(/service down|manual/i);
+    expect(msg).toContain("manual intervention");
   });
 });
