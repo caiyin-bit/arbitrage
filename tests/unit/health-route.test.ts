@@ -21,8 +21,8 @@ describe("GET /api/health", () => {
   });
 
   it("returns 200 when prisma and redis are both healthy", async () => {
-    (prisma.$queryRaw as any).mockResolvedValue([{ "?column?": 1 }]);
-    (redis.ping as any).mockResolvedValue("PONG");
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ "?column?": 1 }]);
+    vi.mocked(redis.ping).mockResolvedValue("PONG");
 
     const res = await GET();
     expect(res.status).toBe(200);
@@ -34,8 +34,8 @@ describe("GET /api/health", () => {
   });
 
   it("returns 503 when prisma query fails", async () => {
-    (prisma.$queryRaw as any).mockRejectedValue(new Error("connection refused"));
-    (redis.ping as any).mockResolvedValue("PONG");
+    vi.mocked(prisma.$queryRaw).mockRejectedValue(new Error("connection refused"));
+    vi.mocked(redis.ping).mockResolvedValue("PONG");
 
     const res = await GET();
     expect(res.status).toBe(503);
@@ -46,8 +46,8 @@ describe("GET /api/health", () => {
   });
 
   it("returns 503 when redis ping fails", async () => {
-    (prisma.$queryRaw as any).mockResolvedValue([{ "?column?": 1 }]);
-    (redis.ping as any).mockRejectedValue(new Error("ETIMEDOUT"));
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ "?column?": 1 }]);
+    vi.mocked(redis.ping).mockRejectedValue(new Error("ETIMEDOUT"));
 
     const res = await GET();
     expect(res.status).toBe(503);
@@ -57,8 +57,8 @@ describe("GET /api/health", () => {
   });
 
   it("returns 503 when both fail", async () => {
-    (prisma.$queryRaw as any).mockRejectedValue(new Error("down"));
-    (redis.ping as any).mockRejectedValue(new Error("down"));
+    vi.mocked(prisma.$queryRaw).mockRejectedValue(new Error("down"));
+    vi.mocked(redis.ping).mockRejectedValue(new Error("down"));
 
     const res = await GET();
     expect(res.status).toBe(503);
