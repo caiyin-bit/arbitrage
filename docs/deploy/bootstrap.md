@@ -113,37 +113,25 @@ curl -sS https://www.cloudflare.com/ips-v6
 
 ---
 
-## 5. 宿主机 nginx server block
+## 5. Nginx 容器配置（纳入 compose 栈，无需主机安装）
+
+本次部署把 nginx 作为一个 Docker 容器跑在和 app/postgres/redis 同一个 compose 里，不在宿主机安装 nginx。配置文件跟着项目一起进仓库 —— 版本控制、首次部署时 scp 过去、bind-mount 进容器。
+
+**你现在不需要做任何事** —— 配置文件 `nginx/conf.d/arbitrage.conf` 已经在仓库里，Step 8 会 scp 到服务器 `/srv/arbitrage/nginx/conf.d/arbitrage.conf`，容器启动时自动加载。
+
+如果你想提前看一眼配置内容：
 
 ```bash
-sudo tee /etc/nginx/conf.d/arbitrage.conf > /dev/null <<'EOF'
-server {
-    listen 80;
-    server_name arbitrage.tadacamp.com;
-
-    # Cloudflare 已经终止 TLS，这里是纯 HTTP。
-    # X-Forwarded-Proto 强制 https 让 Next.js 觉得自己在 HTTPS 后面。
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 60s;
-        proxy_send_timeout 60s;
-        client_max_body_size 10M;
-    }
-}
-EOF
-
-sudo nginx -t
-sudo systemctl reload nginx
+cat nginx/conf.d/arbitrage.conf
 ```
 
-预期：`nginx -t` 返回 `syntax is ok` + `test is successful`。
+关键要点：
+- 监听容器内 80 端口（宿主机也绑 80）
+- `server_name arbitrage.tadacamp.com`
+- `proxy_pass http://app:3000` —— 用的是 compose service 名，通过 docker 内部 DNS 解析到 app 容器
+- `X-Forwarded-Proto https` —— Cloudflare 已经终止 TLS，但要让 Next.js 知道真实协议是 HTTPS
+
+**未来改配置**：修改 `nginx/conf.d/arbitrage.conf` → commit → push → tag 新版本。release.yml 把它打进镜像吗？**不会** —— nginx 配置 bind-mount 在 `./nginx/conf.d/`，不经过镜像。改配置需要手动 scp + `docker compose exec nginx nginx -s reload`（或者整个 `docker compose restart nginx`）。Plan 3 follow-up 可以考虑把 nginx 配置做进 release 流水线。
 
 ---
 
@@ -152,6 +140,7 @@ sudo systemctl reload nginx
 ```bash
 sudo mkdir -p /srv/arbitrage/backups
 sudo mkdir -p /srv/arbitrage/scripts
+sudo mkdir -p /srv/arbitrage/nginx/conf.d
 sudo chown -R deploy:deploy /srv/arbitrage
 ```
 
@@ -193,12 +182,13 @@ sudo chown root:root /srv/arbitrage/.env.production
 
 ---
 
-## 8. 复制 docker-compose.prod.yml 和 scripts 到服务器
+## 8. 复制 docker-compose.prod.yml、nginx 配置和 scripts 到服务器
 
-在本机：
+在本机（项目根目录下）：
 
 ```bash
 scp -i ~/.ssh/arbitrage_deploy docker-compose.prod.yml deploy@<server-ip>:/srv/arbitrage/
+scp -i ~/.ssh/arbitrage_deploy nginx/conf.d/arbitrage.conf deploy@<server-ip>:/srv/arbitrage/nginx/conf.d/
 scp -i ~/.ssh/arbitrage_deploy scripts/deploy.sh deploy@<server-ip>:/srv/arbitrage/
 scp -i ~/.ssh/arbitrage_deploy scripts/rollback.sh deploy@<server-ip>:/srv/arbitrage/
 scp -i ~/.ssh/arbitrage_deploy scripts/notify-deploy.sh deploy@<server-ip>:/srv/arbitrage/scripts/
@@ -294,15 +284,18 @@ TAG=v0.1.0 docker compose --env-file .env.production -f docker-compose.prod.yml 
 
 **注意**：Next standalone build 可能不含 `tsx` 和 `src/server/db/seed.ts`。如果这一步跑不通，临时解决办法：用 dev image 跑一次。写进 `troubleshooting.md` 的 "Seed 在 prod image 里跑不了" 章节。
 
-### 10.7 启动 app
+### 10.7 启动 app + nginx
 
 ```bash
-TAG=v0.1.0 docker compose --env-file .env.production -f docker-compose.prod.yml up -d app
+TAG=v0.1.0 docker compose --env-file .env.production -f docker-compose.prod.yml up -d app nginx
 sleep 15
+# 1. app 直接可达（用于 deploy.sh health check）
 curl -sS -w "\nHTTP %{http_code}\n" http://127.0.0.1:3000/api/health
+# 2. 走 nginx → app 也可达
+curl -sS -w "\nHTTP %{http_code}\n" -H "Host: arbitrage.tadacamp.com" http://127.0.0.1/api/health
 ```
 
-预期：HTTP 200，body `{"status":"ok",...}`。
+预期：两次都 HTTP 200，body `{"status":"ok",...}`。第二次特意带 `Host: arbitrage.tadacamp.com` 头是因为 nginx server block 用 `server_name` 匹配，否则 nginx 会回 default 行为。
 
 ### 10.8 记录 baseline tag
 
@@ -316,7 +309,10 @@ echo "v0.1.0" > /srv/arbitrage/.current-tag
 curl -sS -w "\nHTTP %{http_code}\n" https://arbitrage.tadacamp.com/api/health
 ```
 
-预期：HTTP 200。如果是 502 检查 nginx 配置 + app 容器是否在 localhost:3000 监听。如果是 Cloudflare 521 检查 Step 4 安全组是否放行 CF IP。
+预期：HTTP 200。
+- **502 Bad Gateway** → nginx 容器跑起来了但反代不到 app。检查 `docker compose logs nginx --tail 30` 和 `docker compose ps`，app 容器是不是 healthy
+- **Cloudflare 521 / 522** → 腾讯云安全组没放行 CF IP 段到 80（Step 4），或者 nginx 容器没绑 80（`docker compose ps` 看 PORTS 列）
+- **404** → 用 curl 时少了 Host 头，或者 nginx config 里 `server_name` 没对上 `arbitrage.tadacamp.com`
 
 ---
 

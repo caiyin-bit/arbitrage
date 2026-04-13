@@ -1,9 +1,20 @@
 services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - app
+
   app:
     image: ghcr.io/caiyin-bit/arbitrage:${TAG:-latest}
     restart: unless-stopped
     ports:
-      # Localhost-only — external traffic goes through host nginx reverse proxy
+      # Also bound on host localhost so deploy.sh can curl the health endpoint
+      # from outside the nginx layer; external traffic enters through nginx:80.
       - "127.0.0.1:3000:3000"
     depends_on:
       postgres:
