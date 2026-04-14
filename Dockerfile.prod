@@ -9,21 +9,34 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # ============ Stage 2: builder ============
-# Generate Prisma client + run next build to produce .next/standalone
+# Generate Prisma client, run next build, then prune to prod-only deps
 FROM node:20-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Prisma generate must run before next build — Next compiles @prisma/client imports and needs the generated types
+# Prisma generate must run before next build — Next compiles @prisma/client
+# imports at build time and needs the generated types
 RUN pnpm prisma generate
 
+# Production build
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm next build
 
+# Strip devDependencies to slim down what gets copied into the runner stage.
+# Keeps prisma + @prisma/client + everything in dependencies:.
+RUN pnpm prune --prod
+
 # ============ Stage 3: runner ============
-# Minimal runtime image
+# Minimal runtime image — pnpm's isolated linker stores packages under
+# node_modules/.pnpm/<hash>/... with symlinks at the top level. Rather than
+# trying to hand-pick the Prisma generated client and query engine binaries
+# from inside the store (path includes version hashes and breaks on bumps),
+# we copy node_modules wholesale from the pruned builder stage. This makes
+# the image larger but correct. Standalone output is skipped for the same
+# reason — Next's output tracing does not follow pnpm's symlink structure
+# for the Prisma query engine binary.
 FROM node:20-alpine AS runner
 WORKDIR /app
 
@@ -34,21 +47,21 @@ ENV HOSTNAME=0.0.0.0
 
 RUN addgroup -S app && adduser -S app -G app
 
-# Next.js standalone artifacts (includes minimized node_modules for server.js)
-COPY --from=builder --chown=app:app /app/.next/standalone ./
-COPY --from=builder --chown=app:app /app/.next/static ./.next/static
+# Pruned prod node_modules (includes Prisma client + prisma CLI + ccxt etc)
+COPY --from=builder --chown=app:app /app/node_modules ./node_modules
+
+# Next.js build artifacts
+COPY --from=builder --chown=app:app /app/.next ./.next
 COPY --from=builder --chown=app:app /app/public ./public
 
-# Prisma runtime artifacts — standalone tracing does not include the query engine binary, so copy explicitly
+# Config files needed by next start + prisma migrate deploy
+COPY --from=builder --chown=app:app /app/package.json ./package.json
+COPY --from=builder --chown=app:app /app/next.config.ts ./next.config.ts
+COPY --from=builder --chown=app:app /app/tsconfig.json ./tsconfig.json
 COPY --from=builder --chown=app:app /app/prisma ./prisma
-COPY --from=builder --chown=app:app /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder --chown=app:app /app/node_modules/@prisma ./node_modules/@prisma
-
-# Prisma CLI — deploy.sh runs `prisma migrate deploy` in a throwaway container using this image
-COPY --from=builder --chown=app:app /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder --chown=app:app /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 USER app
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Use next's binary directly — avoids pnpm dependency in runtime image
+CMD ["node_modules/.bin/next", "start"]
