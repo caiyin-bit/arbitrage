@@ -92,9 +92,13 @@ fi
 # ---------------------------------------------------------------------------
 if [[ "${SKIP_MIGRATE:-0}" != "1" ]]; then
   log "step 3: prisma migrate deploy (throwaway container)"
+  # DATABASE_URL comes from the compose file's environment: section, which
+  # is interpolated from --env-file .env.production. Do not override with
+  # `-e DATABASE_URL=...` here because that would force bash to expand
+  # ${DB_PASSWORD} before docker sees it, and deploy.sh does not source
+  # .env.production into its own shell (set -u would trip on unbound var).
   if ! TAG="$TAG" compose run --rm \
          --no-deps \
-         -e DATABASE_URL="postgresql://arbitrage:${DB_PASSWORD}@postgres:5432/arbitrage" \
          app node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma; then
     log "ERROR: migration failed — NOT restarting app. Manual intervention required."
     echo "$TAG" > "$FAILED_TAG_FILE"
