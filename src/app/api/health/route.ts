@@ -26,16 +26,21 @@ async function checkRedis(): Promise<CheckResult> {
 }
 
 export async function GET() {
+  // ROLLBACK-TEST: intentionally force health check to fail so we can
+  // verify deploy.sh's automatic rollback path. Revert immediately after.
   const [database, redisStatus] = await Promise.all([
     checkDatabase(),
     checkRedis(),
   ]);
+  void database;
+  void redisStatus;
 
-  const allOk = database === "ok" && redisStatus === "ok";
-  const body = {
-    status: allOk ? "ok" : "error",
-    checks: { database, redis: redisStatus },
-  };
-
-  return NextResponse.json(body, { status: allOk ? 200 : 503 });
+  return NextResponse.json(
+    {
+      status: "error",
+      checks: { database: "error", redis: "error" },
+      note: "rollback-test intentional failure",
+    },
+    { status: 503 },
+  );
 }
