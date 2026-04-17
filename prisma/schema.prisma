@@ -213,3 +213,54 @@ model Setting {
 
   @@map("settings")
 }
+
+// -----------------------------------------------------------------------------
+// Auth (registration / login / invite)
+// -----------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  displayName  String?  @map("display_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  sessions    Session[]
+  invitesSent Invite[]  @relation("InviteCreator")
+  invitesUsed Invite[]  @relation("InviteUser")
+
+  @@map("users")
+}
+
+model Session {
+  // tokenHash = sha256(cookie_token). 主键是 hash 不是明文 token，即便 DB 读权限泄漏也不能接管会话。
+  tokenHash  String   @id @map("token_hash")
+  userId     String   @map("user_id")
+  expiresAt  DateTime @map("expires_at")
+  userAgent  String?  @map("user_agent")
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Invite {
+  code      String    @id
+  createdBy String    @map("created_by")
+  usedBy    String?   @map("used_by")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  creator User  @relation("InviteCreator", fields: [createdBy], references: [id])
+  user    User? @relation("InviteUser", fields: [usedBy], references: [id])
+
+  @@index([createdBy])
+  @@map("invites")
+}
