@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, protectedProcedure } from "../trpc";
 import { encrypt, decrypt, maskKey } from "@/server/services/crypto/encryption";
 import { createAdapter } from "@/server/services/exchange/factory";
 import { EXCHANGE_NAMES } from "@/lib/constants";
 
 export const exchangeRouter = router({
-  list: publicProcedure.query(async ({ ctx }) => {
+  list: protectedProcedure.query(async ({ ctx }) => {
     const exchanges = await ctx.prisma.exchange.findMany({
       orderBy: { name: "asc" },
     });
@@ -17,7 +17,7 @@ export const exchangeRouter = router({
     }));
   }),
 
-  create: publicProcedure
+  create: protectedProcedure
     .input(
       z.object({
         name: z.enum(EXCHANGE_NAMES),
@@ -39,7 +39,7 @@ export const exchangeRouter = router({
       });
     }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(
       z.object({
         id: z.string().uuid(),
@@ -63,7 +63,7 @@ export const exchangeRouter = router({
       });
     }),
 
-  testConnection: publicProcedure
+  testConnection: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const ex = await ctx.prisma.exchange.findUniqueOrThrow({
@@ -85,7 +85,7 @@ export const exchangeRouter = router({
       }
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.prisma.$transaction(async (tx) => {
@@ -124,7 +124,7 @@ export const exchangeRouter = router({
       });
     }),
 
-  toggleEnabled: publicProcedure
+  toggleEnabled: protectedProcedure
     .input(z.object({ id: z.string().uuid(), isEnabled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       return ctx.prisma.exchange.update({

@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, protectedProcedure } from "../trpc";
 
 export const opportunityRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(
       z
         .object({
@@ -27,7 +27,7 @@ export const opportunityRouter = router({
 
   // Returns the most recent funding rate per (exchange, symbol) pair for
   // the rate matrix view. Shape: { symbol, exchange, rate }[].
-  latestRates: publicProcedure.query(async ({ ctx }) => {
+  latestRates: protectedProcedure.query(async ({ ctx }) => {
     const exchanges = await ctx.prisma.exchange.findMany({
       where: { isEnabled: true },
       select: { id: true, name: true },
