@@ -42,16 +42,17 @@ export async function getSessionUser(token: string): Promise<SessionUser | null>
   });
   if (!row) return null;
   if (row.expiresAt.getTime() < Date.now()) {
-    await prisma.session.delete({ where: { tokenHash } }).catch(() => {});
+    await prisma.session.deleteMany({ where: { tokenHash } });
     return null;
   }
-  await prisma.session.update({
-    where: { tokenHash },
+  const updated = await prisma.session.updateMany({
+    where: { tokenHash, expiresAt: { gt: new Date() } },
     data: {
       expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
       lastSeenAt: new Date(),
     },
   });
+  if (updated.count === 0) return null;
   return row.user;
 }
 

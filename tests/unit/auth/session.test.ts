@@ -86,4 +86,13 @@ describe("session", () => {
     await destroySession(token);
     expect(await getSessionUser(token)).toBeNull();
   });
+
+  it("getSessionUser is resilient to a concurrent destroy (no throw, returns null)", async () => {
+    const user = await makeUser();
+    const { token } = await createSession(user.id);
+    // Simulate: row deleted between findUnique and updateMany
+    await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
+    const got = await getSessionUser(token);
+    expect(got).toBeNull();
+  });
 });
