@@ -37,7 +37,7 @@ describe("auth full flow", () => {
 
   it("bootstrap → logout → login → invite → second user → replay blocked → revoke cycle", async () => {
     // 1. bootstrap register
-    let c = freshCtx();
+    const c = freshCtx();
     await appRouter.createCaller(c).auth.register({ username: "admin", password: "hunter22" });
     const adminToken = extractSessionToken(c);
     expect(await prisma.user.count()).toBe(1);

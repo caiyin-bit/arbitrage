@@ -22,14 +22,14 @@ export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
   }
 
   const cookies = parseCookie(req.headers.get("cookie"));
-  const token = cookies[SESSION_COOKIE] ?? null;
+  const token: string | null = cookies[SESSION_COOKIE] ?? null;
   const user: SessionUser | null = token ? await getSessionUser(token) : null;
 
   return {
     prisma,
     redis,
     user,
-    sessionToken: token,
+    sessionToken: token as string | null,
     resHeaders,
     req,
   };
