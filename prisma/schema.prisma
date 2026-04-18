@@ -20,6 +20,7 @@ model Exchange {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   fundingRateSnapshots FundingRateSnapshot[]
+  ohlcvSnapshots       OhlcvSnapshot[]
   opportunitiesLong    Opportunity[]         @relation("LongExchange")
   opportunitiesShort   Opportunity[]         @relation("ShortExchange")
   positionsLong        Position[]            @relation("PositionLongExchange")
@@ -43,6 +44,7 @@ model FundingRateSnapshot {
 
   exchange Exchange @relation(fields: [exchangeId], references: [id])
 
+  @@unique([exchangeId, symbol, collectedAt])
   @@index([symbol, collectedAt])
   @@index([exchangeId, symbol])
   @@map("funding_rate_snapshots")
@@ -263,4 +265,23 @@ model Invite {
 
   @@index([createdBy])
   @@map("invites")
+}
+
+model OhlcvSnapshot {
+  id         String   @id @default(uuid())
+  exchangeId String   @map("exchange_id")
+  symbol     String
+  timeframe  String
+  openTime   DateTime @map("open_time")
+  open       Decimal  @db.Decimal(20, 8)
+  high       Decimal  @db.Decimal(20, 8)
+  low        Decimal  @db.Decimal(20, 8)
+  close      Decimal  @db.Decimal(20, 8)
+  volume     Decimal  @db.Decimal(30, 8)
+
+  exchange Exchange @relation(fields: [exchangeId], references: [id])
+
+  @@unique([exchangeId, symbol, timeframe, openTime])
+  @@index([symbol, openTime])
+  @@map("ohlcv_snapshots")
 }
