@@ -1,4 +1,5 @@
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserMenu } from "@/components/layout/user-menu";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -48,6 +49,9 @@ export function Header({ title = "Dashboard" }: HeaderProps) {
 
         {/* Theme toggle */}
         <ThemeToggle />
+
+        {/* User menu */}
+        <UserMenu />
       </div>
     </header>
   );
