@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, protectedProcedure } from "../trpc";
 import { openHedgedPosition } from "@/server/services/executor/execute-open";
 import { closeHedgedPosition } from "@/server/services/executor/execute-close";
 import { EXCHANGE_NAMES } from "@/lib/constants";
 
 export const positionRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(
       z
         .object({
@@ -33,7 +33,7 @@ export const positionRouter = router({
       });
     }),
 
-  get: publicProcedure
+  get: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       return ctx.prisma.position.findUniqueOrThrow({
@@ -47,7 +47,7 @@ export const positionRouter = router({
       });
     }),
 
-  open: publicProcedure
+  open: protectedProcedure
     .input(
       z.object({
         idempotencyKey: z.string().uuid(),
@@ -63,7 +63,7 @@ export const positionRouter = router({
       return openHedgedPosition(input);
     }),
 
-  close: publicProcedure
+  close: protectedProcedure
     .input(
       z.object({
         idempotencyKey: z.string().uuid(),

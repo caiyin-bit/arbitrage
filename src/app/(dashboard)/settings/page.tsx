@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Plug, SlidersHorizontal, ShieldAlert, Bell, User } from "lucide-react";
+import { Plug, SlidersHorizontal, ShieldAlert, Bell, User, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExchangeForm } from "@/components/settings/exchange-form";
 import { ParamsForm } from "@/components/settings/params-form";
+import { InvitesSection } from "@/components/settings/invites-section";
 
 const TABS = [
   { key: "exchanges", label: "Exchanges", icon: Plug },
@@ -12,6 +13,7 @@ const TABS = [
   { key: "risk", label: "Risk Control", icon: ShieldAlert },
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "account", label: "Account", icon: User },
+  { key: "invites", label: "Invites", icon: Gift },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -42,9 +44,9 @@ export default function SettingsPage() {
 
       {/* Right content */}
       <div className="flex-1 flex flex-col gap-5 min-w-0">
-        <ExchangeForm />
-        <div className="h-px bg-border" />
-        <ParamsForm />
+        {activeTab === "exchanges" && <ExchangeForm />}
+        {activeTab === "strategy" && <ParamsForm />}
+        {activeTab === "invites" && <InvitesSection />}
       </div>
     </div>
   );

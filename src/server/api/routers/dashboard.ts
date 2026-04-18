@@ -1,7 +1,7 @@
-import { router, publicProcedure } from "../trpc";
+import { router, protectedProcedure } from "../trpc";
 
 export const dashboardRouter = router({
-  overview: publicProcedure.query(async ({ ctx }) => {
+  overview: protectedProcedure.query(async ({ ctx }) => {
     const [openPositions, todayOpportunities] = await Promise.all([
       ctx.prisma.position.count({ where: { status: "OPEN" } }),
       ctx.prisma.opportunity.count({
