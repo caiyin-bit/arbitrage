@@ -41,9 +41,9 @@ export interface Clock {
 }
 
 export interface RedisLike {
-  set(key: string, value: string, ...args: (string | number)[]): Promise<string | null>;
+  set(key: string, value: string, ...args: (string | number)[]): Promise<"OK" | null>;
   get(key: string): Promise<string | null>;
-  del(key: string): Promise<number>;
+  del(...keys: string[]): Promise<number>;
 }
 
 export interface PositionStore {
