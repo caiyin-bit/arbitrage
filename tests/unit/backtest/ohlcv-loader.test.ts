@@ -3,7 +3,12 @@ import { prisma } from "@/server/db/client";
 import { loadOhlcvHistory } from "@/server/services/backtest/data-loader/ohlcv-loader";
 
 async function reset() {
+  await prisma.settlement.deleteMany();
+  await prisma.tradeLog.deleteMany();
+  await prisma.position.deleteMany();
+  await prisma.opportunity.deleteMany();
   await prisma.ohlcvSnapshot.deleteMany();
+  await prisma.fundingRateSnapshot.deleteMany();
   await prisma.exchange.deleteMany();
 }
 

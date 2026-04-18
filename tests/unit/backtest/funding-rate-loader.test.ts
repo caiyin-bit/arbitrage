@@ -3,10 +3,11 @@ import { prisma } from "@/server/db/client";
 import { loadFundingRateHistory } from "@/server/services/backtest/data-loader/funding-rate-loader";
 
 async function reset() {
-  await prisma.tradeLog.deleteMany();
   await prisma.settlement.deleteMany();
+  await prisma.tradeLog.deleteMany();
   await prisma.position.deleteMany();
   await prisma.opportunity.deleteMany();
+  await prisma.ohlcvSnapshot.deleteMany();
   await prisma.fundingRateSnapshot.deleteMany();
   await prisma.exchange.deleteMany();
 }
