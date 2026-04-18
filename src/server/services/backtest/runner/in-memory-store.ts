@@ -42,12 +42,23 @@ export class InMemoryPositionStore implements PositionStore {
 
   async findPositionOrThrow(
     where: Prisma.PositionWhereUniqueInput,
-    _include?: Prisma.PositionInclude,
+    include?: Prisma.PositionInclude,
   ): Promise<Position> {
     if (typeof where.id !== "string") throw new Error("InMemoryPositionStore.findPositionOrThrow only supports { id }");
     const row = this.positions.get(where.id);
     if (!row) throw new Error(`no position ${where.id}`);
-    return row;
+    if (!include) return row;
+    // Attach exchange relations when requested, mirroring Prisma include behaviour
+    const extra: Record<string, unknown> = {};
+    if (include.longExchange) {
+      const ex = [...this.exchanges.values()].find((e) => e.id === (row as unknown as Record<string, unknown>).longExchangeId);
+      extra.longExchange = ex ?? null;
+    }
+    if (include.shortExchange) {
+      const ex = [...this.exchanges.values()].find((e) => e.id === (row as unknown as Record<string, unknown>).shortExchangeId);
+      extra.shortExchange = ex ?? null;
+    }
+    return { ...row, ...extra } as unknown as Position;
   }
 
   async listOpenPositions(): Promise<Position[]> {

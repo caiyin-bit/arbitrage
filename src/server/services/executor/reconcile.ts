@@ -3,6 +3,12 @@ import type { ExecutorContext } from "./types";
 import { computeAggregates, type RawFill } from "./aggregate";
 import type { Decimal } from "@prisma/client/runtime/library";
 
+/** Coerce a value that may be a Prisma Decimal or a plain number to a JS number. */
+function toNum(v: unknown): number {
+  if (typeof v === "number") return v;
+  return (v as Decimal).toNumber();
+}
+
 /**
  * Query the exchange for a specific clientOrderId and reconcile the DB state.
  * Idempotent — safe to call multiple times. The clientOrderId unique constraint
@@ -34,7 +40,7 @@ export async function reconcileOrder(
   if (!order) return "pending";
 
   const filled = order.filledSize ?? 0;
-  const rowQty = row.signedQty ? Math.abs((row.signedQty as unknown as Decimal).toNumber()) : 0;
+  const rowQty = row.signedQty ? Math.abs(toNum(row.signedQty)) : 0;
 
   let newStatus: "FILLED" | "PARTIAL" | "FAILED";
   if (filled === 0) newStatus = "FAILED";
@@ -59,8 +65,8 @@ export async function reconcileOrder(
     const fills: RawFill[] = logs.map((l) => ({
       side: l.side.toLowerCase() as "long" | "short",
       action: l.action.toLowerCase() as "open" | "close" | "rescue",
-      signedQty: (l.signedQty as unknown as Decimal).toNumber(),
-      price: (l.price as unknown as Decimal).toNumber(),
+      signedQty: toNum(l.signedQty),
+      price: toNum(l.price),
       status: l.status.toLowerCase() as "filled" | "pending" | "failed",
     }));
 

@@ -6,6 +6,11 @@ import type { ExchangeAdapter } from "@/server/services/exchange/types";
 import type { Decimal } from "@prisma/client/runtime/library";
 import type { Exchange } from "@prisma/client";
 
+function toNum(v: unknown): number {
+  if (typeof v === "number") return v;
+  return (v as Decimal).toNumber();
+}
+
 const LOCK_TTL_SECONDS = 60;
 const RESULT_TTL_SECONDS = 300;
 
@@ -52,8 +57,8 @@ export async function closeHedgedPosition(
       ctx.adapterFor(position.shortExchange.name),
     ]);
 
-    const longSize = (position.longSize as unknown as Decimal).toNumber();
-    const shortSize = (position.shortSize as unknown as Decimal).toNumber();
+    const longSize = toNum(position.longSize);
+    const shortSize = toNum(position.shortSize);
 
     const longClientId = generateClientOrderId();
     const shortClientId = generateClientOrderId();

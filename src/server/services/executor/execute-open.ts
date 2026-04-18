@@ -6,6 +6,11 @@ import type { OpenHedgedRequest, ExecutionResult, ExecutorContext } from "./type
 import type { ExchangeAdapter } from "@/server/services/exchange/types";
 import type { Decimal } from "@prisma/client/runtime/library";
 
+function toNum(v: unknown): number {
+  if (typeof v === "number") return v;
+  return (v as Decimal).toNumber();
+}
+
 const LOCK_TTL_SECONDS = 60;
 const RESULT_TTL_SECONDS = 300; // 5 minutes
 
@@ -134,10 +139,10 @@ export async function openHedgedPosition(
       };
     } else {
       const longFilled = longLog.status === "FILLED" || longLog.status === "PARTIAL"
-        ? Math.abs((longLog.signedQty as unknown as Decimal).toNumber())
+        ? Math.abs(toNum(longLog.signedQty))
         : 0;
       const shortFilled = shortLog.status === "FILLED" || shortLog.status === "PARTIAL"
-        ? Math.abs((shortLog.signedQty as unknown as Decimal).toNumber())
+        ? Math.abs(toNum(shortLog.signedQty))
         : 0;
 
       const plan = decideRescueStrategy({ longFilled, shortFilled });

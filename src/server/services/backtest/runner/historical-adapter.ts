@@ -15,6 +15,7 @@ import { applySlippage } from "./slippage";
 
 export class HistoricalAdapter implements ExchangeAdapter {
   readonly name: string;
+  private readonly orders = new Map<string, Order>();
 
   constructor(
     private readonly exchangeName: string,
@@ -48,7 +49,7 @@ export class HistoricalAdapter implements ExchangeAdapter {
     }
     const k = await this.lastKline(params.symbol);
     const execPrice = applySlippage(Number(k.close), params.side, this.slippageBps);
-    return {
+    const order: Order = {
       id: `backtest-${params.clientOrderId}`,
       clientOrderId: params.clientOrderId,
       symbol: params.symbol,
@@ -59,6 +60,8 @@ export class HistoricalAdapter implements ExchangeAdapter {
       fee: execPrice * params.size * 0.0005,
       timestamp: this.clock.now(),
     };
+    this.orders.set(params.clientOrderId, order);
+    return order;
   }
 
   async closePosition(params: CloseParams): Promise<Order> {
@@ -70,7 +73,7 @@ export class HistoricalAdapter implements ExchangeAdapter {
     // Reverse the side so slippage works against the position being closed.
     const closeSide = params.side === "long" ? "short" : "long";
     const execPrice = applySlippage(Number(k.close), closeSide, this.slippageBps);
-    return {
+    const order: Order = {
       id: `backtest-${params.clientOrderId}`,
       clientOrderId: params.clientOrderId,
       symbol: params.symbol,
@@ -81,6 +84,8 @@ export class HistoricalAdapter implements ExchangeAdapter {
       fee: execPrice * params.size * 0.0005,
       timestamp: this.clock.now(),
     };
+    this.orders.set(params.clientOrderId, order);
+    return order;
   }
 
   async getPrice(symbol: string): Promise<Ticker> {
@@ -119,8 +124,10 @@ export class HistoricalAdapter implements ExchangeAdapter {
       }));
   }
 
-  async getOrder(_orderId: string): Promise<Order> {
-    throw new Error("getOrder: not supported in backtest");
+  async getOrder(clientOrderId: string): Promise<Order> {
+    const order = this.orders.get(clientOrderId);
+    if (!order) throw new Error(`getOrder: no order ${clientOrderId}`);
+    return order;
   }
 
   async getFundingRates(_symbols: string[]): Promise<FundingRate[]> {
