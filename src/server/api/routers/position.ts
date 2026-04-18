@@ -75,6 +75,6 @@ export const positionRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
-      return closeHedgedPosition(input);
+      return closeHedgedPosition(buildProdContext(), input);
     }),
 });
