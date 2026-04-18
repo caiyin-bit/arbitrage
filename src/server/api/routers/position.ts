@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import { openHedgedPosition } from "@/server/services/executor/execute-open";
+import { buildProdContext } from "@/server/services/executor/context-prod";
 import { closeHedgedPosition } from "@/server/services/executor/execute-close";
 import { EXCHANGE_NAMES } from "@/lib/constants";
 
@@ -60,7 +61,7 @@ export const positionRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
-      return openHedgedPosition(input);
+      return openHedgedPosition(buildProdContext(), input);
     }),
 
   close: protectedProcedure

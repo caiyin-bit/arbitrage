@@ -170,8 +170,10 @@ describe("openHedgedPosition — rescue path", () => {
     const { openHedgedPosition } = await import(
       "@/server/services/executor/execute-open"
     );
+    const { buildProdContext } = await import("@/server/services/executor/context-prod");
+    const ctx = buildProdContext();
 
-    const result = await openHedgedPosition({
+    const result = await openHedgedPosition(ctx, {
       idempotencyKey: crypto.randomUUID(),
       opportunityId: opp.id,
       symbol: "BTC/USDT:USDT",
