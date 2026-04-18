@@ -1,7 +1,8 @@
 import { router, publicProcedure, protectedProcedure } from "../trpc";
 import { destroySession, createSession, SESSION_TTL_SECONDS } from "@/server/services/auth/session";
 import { serializeSessionCookie } from "@/server/services/auth/cookie";
-import { hashPassword } from "@/server/services/auth/password";
+import { hashPassword, verifyPassword } from "@/server/services/auth/password";
+import { hitLoginBucket } from "@/server/services/auth/rate-limit";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@prisma/client";
@@ -117,4 +118,40 @@ export const authRouter = router({
     clearCookie(ctx);
     return { ok: true as const };
   }),
+
+  login: publicProcedure
+    .input(z.object({ username: z.string().min(1).max(64), password: z.string().min(1).max(200) }))
+    .mutation(async ({ ctx, input }) => {
+      const ip =
+        ctx.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+
+      const ipBucket = await hitLoginBucket(`login:ip:${ip}`, 30, 600);
+      if (ipBucket.locked) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "请稍后再试" });
+      }
+      const pairBucket = await hitLoginBucket(
+        `login:pair:${ip}:${input.username}`,
+        10,
+        600,
+      );
+      if (pairBucket.locked) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "请稍后再试" });
+      }
+
+      const ua = ctx.req.headers.get("user-agent");
+      const delay = new Promise((r) => setTimeout(r, 400));
+
+      const user = await ctx.prisma.user.findUnique({ where: { username: input.username } });
+      const ok = user ? verifyPassword(input.password, user.passwordHash) : false;
+      await delay;
+      if (!user || !ok) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "用户名或密码错误" });
+      }
+
+      const { token } = await createSession(user.id, ua, ip === "unknown" ? null : ip);
+      writeCookie(ctx, token);
+      return {
+        user: { id: user.id, username: user.username, displayName: user.displayName },
+      };
+    }),
 });
