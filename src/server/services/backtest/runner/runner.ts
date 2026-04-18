@@ -113,8 +113,65 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestResul
   return { config, startedAt, finishedAt: new Date(), closedTrades, equityCurve };
 }
 
+/**
+ * Replicates Plan 2's nextPauseState logic using historical OHLCV from DB.
+ *
+ * Production health.ts compares two consecutive kline closes:
+ *   priceChange1h  = (kline1h[1].close - kline1h[0].close) / kline1h[0].close
+ *   priceChange24h = (kline1d[1].close - kline1d[0].close) / kline1d[0].close
+ *
+ * In the backtest we have only 1h candles, so:
+ *   - 1h check: compare the two most recent 1h closes
+ *   - 24h check: compare close 24 candles ago to the latest close
+ *
+ * Returns true if ANY monitored symbol is currently paused.
+ */
+async function checkVolatilityPause(now: Date, cfg: BacktestConfig): Promise<boolean> {
+  // Symbols currently being traded (open positions) — mirror production's buildMonitoredSymbols
+  const openSymbols = await prisma.fundingRateSnapshot.findMany({
+    where: { collectedAt: { lte: now } },
+    select: { symbol: true },
+    distinct: ["symbol"],
+  });
+  const symbols = [...new Set(openSymbols.map((r) => r.symbol))];
+  if (symbols.length === 0) return false;
+
+  for (const symbol of symbols) {
+    // Fetch 25 most-recent 1h candles up to `now` (any exchange — we just need price)
+    const candles = await prisma.ohlcvSnapshot.findMany({
+      where: { symbol, timeframe: "1h", openTime: { lte: now } },
+      orderBy: { openTime: "desc" },
+      take: 25,
+      select: { close: true },
+    });
+    if (candles.length < 2) continue;
+
+    // candles[0] is most recent, candles[1] is previous
+    const latest = Number(candles[0].close);
+    const prev1h  = Number(candles[1].close);
+    const priceChange1h = (latest - prev1h) / prev1h;
+
+    if (Math.abs(priceChange1h) > cfg.volatilityThreshold1h) return true;
+
+    if (candles.length >= 25) {
+      const prev24h = Number(candles[24].close);
+      const priceChange24h = (latest - prev24h) / prev24h;
+      if (Math.abs(priceChange24h) > cfg.volatilityThreshold24h) return true;
+    }
+  }
+  return false;
+}
+
 async function handleFundingCollection(ctx: ExecutorContext, cfg: BacktestConfig) {
   const now = ctx.clock.now();
+
+  if (cfg.volatilityPauseEnabled) {
+    const paused = await checkVolatilityPause(now, cfg);
+    if (paused) {
+      ctx.log("volatility pause active, skipping opens");
+      return;
+    }
+  }
   const rates = await prisma.fundingRateSnapshot.findMany({
     where: { collectedAt: { lte: now } },
     include: { exchange: { select: { name: true } } },

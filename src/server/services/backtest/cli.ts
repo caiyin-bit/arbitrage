@@ -29,6 +29,10 @@ function parseArgs(): CliConfig {
     failureRate: args.includes("--no-failures") ? 0 : Number(get("failure-rate", String(DEFAULT_CONFIG.failureRate))),
     seed: get("seed", DEFAULT_CONFIG.seed)!,
     volatilityPauseEnabled: !args.includes("--no-vol-pause"),
+    volatilityThreshold1h: Number(get("vol-threshold-1h", String(DEFAULT_CONFIG.volatilityThreshold1h))),
+    volatilityThreshold24h: Number(get("vol-threshold-24h", String(DEFAULT_CONFIG.volatilityThreshold24h))),
+    rateReversalExit: !args.includes("--no-rate-reversal-exit"),
+    minHoldingPeriods: Number(get("min-holding-periods", String(DEFAULT_CONFIG.minHoldingPeriods))),
     healthIntervalSec: Number(get("health-interval-sec", String(DEFAULT_CONFIG.healthIntervalSec))),
   };
 }

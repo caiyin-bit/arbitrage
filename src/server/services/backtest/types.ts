@@ -13,6 +13,10 @@ export interface BacktestConfig {
   seed: string;
   healthIntervalSec: number;
   volatilityPauseEnabled: boolean;
+  volatilityThreshold1h: number;   // default 0.05 — matches production seed
+  volatilityThreshold24h: number;  // default 0.15 — matches production seed
+  rateReversalExit: boolean;        // stub — not yet wired (no production code reads it)
+  minHoldingPeriods: number;        // stub — not yet wired
   exchanges?: ExchangeName[];
 }
 
@@ -29,6 +33,10 @@ export const DEFAULT_CONFIG: BacktestConfig = {
   seed: "plan4-default",
   healthIntervalSec: 300,
   volatilityPauseEnabled: true,
+  volatilityThreshold1h: 0.05,
+  volatilityThreshold24h: 0.15,
+  rateReversalExit: true,
+  minHoldingPeriods: 1,
 };
 
 export interface Phase0Opportunity {
