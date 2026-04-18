@@ -40,7 +40,7 @@ export async function executeRescue(
       clientOrderId,
     });
 
-    await recordTradeAndAggregate({
+    await recordTradeAndAggregate(ctx, {
       positionId: position.id,
       exchangeId,
       executionId,
@@ -53,7 +53,7 @@ export async function executeRescue(
       fee: order.fee,
       exchangeOrderId: order.id,
       status: "filled",
-      executedAt: new Date(),
+      executedAt: ctx.clock.now(),
     });
 
     note = `Rescued ${plan.qty} ${plan.side} via market reverse`;
@@ -71,7 +71,7 @@ export async function executeRescue(
       clientOrderId,
     });
 
-    await recordTradeAndAggregate({
+    await recordTradeAndAggregate(ctx, {
       positionId: position.id,
       exchangeId,
       executionId,
@@ -84,7 +84,7 @@ export async function executeRescue(
       fee: order.fee,
       exchangeOrderId: order.id,
       status: order.filledSize > 0 ? "filled" : "failed",
-      executedAt: new Date(),
+      executedAt: ctx.clock.now(),
     });
 
     note = `Topped up ${plan.qty} ${plan.side} via market`;
@@ -112,15 +112,7 @@ export async function executeRescue(
   // Cool down the opportunity
   const now = ctx.clock.now();
   const cooldownUntil = new Date(now.getTime() + OPPORTUNITY_COOLDOWN_MS);
-  // TODO: T13 will add updateOpportunity to PositionStore
-  // For now, we need to use Prisma directly for opportunity updates
-  const { prisma } = await import("@/server/db/client");
-  await prisma.opportunity.update({
-    where: { id: position.opportunityId },
-    data: {
-      cooldownUntil,
-    },
-  });
+  await ctx.store.updateOpportunity(position.opportunityId, { cooldownUntil });
 
   const { dispatch } = await import("@/server/services/notifier");
   if (plan.kind !== "both_filled" && plan.kind !== "both_failed") {

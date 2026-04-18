@@ -1,4 +1,4 @@
-import type { PrismaClient, Position, TradeLog, Settlement, Prisma } from "@prisma/client";
+import type { PrismaClient, Position, TradeLog, Settlement, Opportunity, Prisma } from "@prisma/client";
 import type { PositionStore } from "./types";
 
 // Accepts either PrismaClient (prod) or TransactionClient (inside .$transaction)
@@ -55,6 +55,14 @@ export class PrismaPositionStore implements PositionStore {
 
   createSettlement(data: Prisma.SettlementUncheckedCreateInput): Promise<Settlement> {
     return this.db.settlement.create({ data });
+  }
+
+  updateOpportunity(id: string, data: Prisma.OpportunityUncheckedUpdateInput): Promise<Opportunity> {
+    return this.db.opportunity.update({ where: { id }, data });
+  }
+
+  async lockPositionForUpdate(id: string): Promise<void> {
+    await this.db.$executeRaw`SELECT id FROM positions WHERE id = ${id} FOR UPDATE`;
   }
 
   async findExchangeByName(name: string) {

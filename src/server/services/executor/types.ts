@@ -1,5 +1,5 @@
 import type { ExchangeName } from "@/lib/constants";
-import type { Position, TradeLog, Settlement, Prisma } from "@prisma/client";
+import type { Position, TradeLog, Settlement, Opportunity, Prisma } from "@prisma/client";
 import type { ExchangeAdapter } from "@/server/services/exchange/types";
 
 export interface OpenHedgedRequest {
@@ -68,6 +68,11 @@ export interface PositionStore {
   createSettlement(data: Prisma.SettlementUncheckedCreateInput): Promise<Settlement>;
 
   findExchangeByName(name: string): Promise<{ id: string; name: string } | null>;
+
+  updateOpportunity(id: string, data: Prisma.OpportunityUncheckedUpdateInput): Promise<Opportunity>;
+
+  /** Advisory row-level lock on a position row (for use inside transaction). */
+  lockPositionForUpdate(id: string): Promise<void>;
 
   transaction<T>(fn: (tx: PositionStore) => Promise<T>): Promise<T>;
 }

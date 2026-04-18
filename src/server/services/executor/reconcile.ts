@@ -1,5 +1,5 @@
-import { prisma } from "@/server/db/client";
 import type { ExchangeAdapter } from "@/server/services/exchange/types";
+import type { ExecutorContext } from "./types";
 import { computeAggregates, type RawFill } from "./aggregate";
 import type { Decimal } from "@prisma/client/runtime/library";
 
@@ -8,12 +8,15 @@ import type { Decimal } from "@prisma/client/runtime/library";
  * Idempotent — safe to call multiple times. The clientOrderId unique constraint
  * and the explicit status check guarantee exactly-once transitions.
  */
-export async function reconcileOrder(args: {
-  clientOrderId: string;
-  adapter: ExchangeAdapter;
-}): Promise<"filled" | "partial" | "failed" | "pending"> {
-  const row = await prisma.tradeLog.findUniqueOrThrow({
-    where: { clientOrderId: args.clientOrderId },
+export async function reconcileOrder(
+  ctx: ExecutorContext,
+  args: {
+    clientOrderId: string;
+    adapter: ExchangeAdapter;
+  },
+): Promise<"filled" | "partial" | "failed" | "pending"> {
+  const row = await ctx.store.findTradeLogOrThrow({
+    clientOrderId: args.clientOrderId,
   });
 
   if (row.status === "FILLED" || row.status === "FAILED") {
@@ -38,25 +41,20 @@ export async function reconcileOrder(args: {
   else if (rowQty > 0 && filled < rowQty) newStatus = "PARTIAL";
   else newStatus = "FILLED";
 
-  await prisma.$transaction(async (tx) => {
+  await ctx.store.transaction(async (tx) => {
     // Lock the position row first to serialize concurrent reconcile calls
-    await tx.$executeRaw`SELECT id FROM positions WHERE id = ${row.positionId} FOR UPDATE`;
+    await tx.lockPositionForUpdate(row.positionId);
 
-    await tx.tradeLog.update({
-      where: { clientOrderId: args.clientOrderId },
-      data: {
-        status: newStatus,
-        price: order.price,
-        signedQty: row.action === "OPEN" ? filled : -filled,
-        fee: order.fee,
-        exchangeOrderId: order.id,
-        executedAt: new Date(),
-      },
+    await tx.updateTradeLogByClientOrderId(args.clientOrderId, {
+      status: newStatus,
+      price: order.price,
+      signedQty: row.action === "OPEN" ? filled : -filled,
+      fee: order.fee,
+      exchangeOrderId: order.id,
+      executedAt: ctx.clock.now(),
     });
 
-    const logs = await tx.tradeLog.findMany({
-      where: { positionId: row.positionId },
-    });
+    const logs = await tx.findManyTradeLogs({ positionId: row.positionId });
 
     const fills: RawFill[] = logs.map((l) => ({
       side: l.side.toLowerCase() as "long" | "short",
@@ -68,14 +66,11 @@ export async function reconcileOrder(args: {
 
     const agg = computeAggregates(fills);
 
-    await tx.position.update({
-      where: { id: row.positionId },
-      data: {
-        longSize: agg.longSize,
-        longAvgEntryPrice: agg.longAvgEntry,
-        shortSize: agg.shortSize,
-        shortAvgEntryPrice: agg.shortAvgEntry,
-      },
+    await tx.updatePosition(row.positionId, {
+      longSize: agg.longSize,
+      longAvgEntryPrice: agg.longAvgEntry,
+      shortSize: agg.shortSize,
+      shortAvgEntryPrice: agg.shortAvgEntry,
     });
   });
 

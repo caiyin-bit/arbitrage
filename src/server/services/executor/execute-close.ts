@@ -9,15 +9,6 @@ import type { Exchange } from "@prisma/client";
 const LOCK_TTL_SECONDS = 60;
 const RESULT_TTL_SECONDS = 300;
 
-// Temporary compat: reconcileOrder will accept ctx as first param in T13.
-// Until then, we wrap the old signature.
-async function reconcileOrderCompat(
-  _ctx: ExecutorContext,
-  args: { clientOrderId: string; adapter: ExchangeAdapter },
-) {
-  return reconcileOrder(args); // old signature, still works
-}
-
 export async function closeHedgedPosition(
   ctx: ExecutorContext,
   req: CloseHedgedRequest,
@@ -172,7 +163,7 @@ async function submitCloseAndReconcile(
   }
 
   try {
-    await reconcileOrderCompat(ctx, { clientOrderId: args.clientOrderId, adapter: args.adapter });
+    await reconcileOrder(ctx, { clientOrderId: args.clientOrderId, adapter: args.adapter });
   } catch (err) {
     ctx.log(`reconcile failed for ${args.clientOrderId}`, { err });
   }
