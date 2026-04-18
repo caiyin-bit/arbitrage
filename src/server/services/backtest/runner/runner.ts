@@ -5,6 +5,7 @@ import { findOpportunities } from "@/server/services/detector/opportunity";
 import type { FundingRate } from "@/lib/types";
 import type { ExchangeName } from "@/lib/constants";
 import type { ExecutorContext } from "@/server/services/executor/types";
+import type { TradeLog } from "@prisma/client";
 import type { BacktestConfig, BacktestResult, ClosedTrade, EquityCurvePoint } from "../types";
 import { VirtualClock } from "./virtual-clock";
 import { buildTimeline, type VirtualEvent } from "./timeline";
@@ -19,6 +20,7 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestResul
   const failure = createFailureInjector(config.seed, config.failureRate);
 
   const exchangeRows = await prisma.exchange.findMany({ select: { id: true, name: true } });
+  const exchangeNamesById = new Map<string, string>(exchangeRows.map((e) => [e.id, e.name]));
   const store = new InMemoryPositionStore(exchangeRows);
   const redis = new InMemoryRedis(() => clock.now());
 
@@ -70,12 +72,24 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestResul
     const dayKey = event.at.toISOString().slice(0, 10);
     if (dayKey !== lastDay) {
       lastDay = dayKey;
+      const closedTradesByThen = buildClosedTrades(store, exchangeNamesById).filter(
+        (t) => t.closedAt.getTime() <= event.at.getTime(),
+      );
+      const realizedPriceAndFees = closedTradesByThen.reduce((s, t) => s + (t.grossPnl - t.fees), 0);
+      const settlementsSoFar = store.allSettlements().filter(
+        (s) => s.settledAt.getTime() <= event.at.getTime(),
+      );
+      const fundingSoFar = settlementsSoFar.reduce((s, x) => s + Number(x.fundingAmount), 0);
+      const equity = config.initialCapital + realizedPriceAndFees + fundingSoFar;
+      const dayGrossPnl = closedTradesByThen.reduce((s, t) => s + t.grossPnl, 0);
+      const dayNetPnl = closedTradesByThen.reduce((s, t) => s + t.netPnl, 0) + fundingSoFar;
+      const totalFees = closedTradesByThen.reduce((s, t) => s + t.fees, 0);
       equityCurve.push({
         date: new Date(dayKey + "T00:00:00Z"),
-        equity: config.initialCapital,
-        grossPnl: 0,
-        netPnl: 0,
-        totalFees: 0,
+        equity,
+        grossPnl: dayGrossPnl,
+        netPnl: dayNetPnl,
+        totalFees,
       });
     }
   }
@@ -95,7 +109,7 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestResul
     }
   }
 
-  const closedTrades = buildClosedTrades(store);
+  const closedTrades = buildClosedTrades(store, exchangeNamesById);
   return { config, startedAt, finishedAt: new Date(), closedTrades, equityCurve };
 }
 
@@ -209,40 +223,60 @@ async function handleSettlement(
   }
 }
 
-function buildClosedTrades(store: InMemoryPositionStore): ClosedTrade[] {
-  return store
-    .allPositions()
-    .filter((p) => p.status === "CLOSED")
-    .map((p) => {
-      const settlements = store.allSettlements().filter((s) => s.positionId === p.id);
-      const fundingPnl = settlements.reduce((a, s) => a + Number(s.fundingAmount), 0);
-      const pCast = p as unknown as {
-        openedAt: Date;
-        closedAt: Date | null;
-        longExchangeId: string;
-        shortExchangeId: string;
-        longAvgEntryPrice: unknown;
-        shortAvgEntryPrice: unknown;
-      };
-      const openedAt = pCast.openedAt ?? new Date(0);
-      const closedAt = pCast.closedAt ?? new Date();
-      const holdHours = (closedAt.getTime() - openedAt.getTime()) / 3_600_000;
-      return {
-        positionId: p.id,
-        symbol: p.symbol,
-        longExchange: pCast.longExchangeId,
-        shortExchange: pCast.shortExchangeId,
-        openedAt,
-        closedAt,
-        longEntry: Number(pCast.longAvgEntryPrice),
-        shortEntry: Number(pCast.shortAvgEntryPrice),
-        longExit: 0,   // stubbed — deferred to Reporter
-        shortExit: 0,  // stubbed — deferred to Reporter
-        grossPnl: 0,   // stubbed — deferred to Reporter
-        fees: 0,        // stubbed — deferred to Reporter
-        fundingPnl,
-        netPnl: fundingPnl,
-        holdHours,
-      };
+function buildClosedTrades(
+  store: InMemoryPositionStore,
+  exchangeNames: Map<string, string>,
+): ClosedTrade[] {
+  const wAvg = (ls: TradeLog[]) => {
+    const totalQty = ls.reduce((s, l) => s + Math.abs(Number(l.signedQty)), 0);
+    if (totalQty === 0) return 0;
+    return ls.reduce((s, l) => s + Number(l.price) * Math.abs(Number(l.signedQty)), 0) / totalQty;
+  };
+
+  const trades: ClosedTrade[] = [];
+  for (const p of store.allPositions()) {
+    if (p.status !== "CLOSED") continue;
+
+    const logs = store.allTradeLogs().filter((l) => l.positionId === p.id);
+    const settlements = store.allSettlements().filter((s) => s.positionId === p.id);
+
+    const buckets: Record<string, TradeLog[]> = {
+      OPEN_LONG: [],
+      OPEN_SHORT: [],
+      CLOSE_LONG: [],
+      CLOSE_SHORT: [],
+    };
+    for (const log of logs) {
+      const key = `${log.action}_${log.side}`;
+      if (key in buckets) buckets[key].push(log);
+    }
+
+    const longEntry  = wAvg(buckets.OPEN_LONG);
+    const shortEntry = wAvg(buckets.OPEN_SHORT);
+    const longExit   = wAvg(buckets.CLOSE_LONG);
+    const shortExit  = wAvg(buckets.CLOSE_SHORT);
+
+    const longSize  = Number(p.longSize);
+    const shortSize = Number(p.shortSize);
+    const grossPnl  = (longExit - longEntry) * longSize + (shortEntry - shortExit) * shortSize;
+
+    const fees       = logs.reduce((s, l) => s + Number(l.fee), 0);
+    const fundingPnl = settlements.reduce((s, x) => s + Number(x.fundingAmount), 0);
+    const netPnl     = grossPnl + fundingPnl - fees;
+
+    const openedAt  = p.openedAt ?? new Date(0);
+    const closedAt  = p.closedAt ?? new Date();
+    const holdHours = (closedAt.getTime() - openedAt.getTime()) / 3_600_000;
+
+    trades.push({
+      positionId:    p.id,
+      symbol:        p.symbol,
+      longExchange:  exchangeNames.get(p.longExchangeId)  ?? p.longExchangeId,
+      shortExchange: exchangeNames.get(p.shortExchangeId) ?? p.shortExchangeId,
+      openedAt, closedAt,
+      longEntry, shortEntry, longExit, shortExit,
+      grossPnl, fees, fundingPnl, netPnl, holdHours,
     });
+  }
+  return trades;
 }
