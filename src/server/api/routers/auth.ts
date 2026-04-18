@@ -6,6 +6,7 @@ import { hitLoginBucket } from "@/server/services/auth/rate-limit";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@prisma/client";
+import { randomBytes } from "node:crypto";
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
@@ -153,5 +154,46 @@ export const authRouter = router({
       return {
         user: { id: user.id, username: user.username, displayName: user.displayName },
       };
+    }),
+
+  createInvite: protectedProcedure.mutation(async ({ ctx }) => {
+    const code = randomBytes(16).toString("base64url");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await ctx.prisma.invite.create({
+      data: { code, createdBy: ctx.user.id, expiresAt },
+    });
+    return { code, expiresAt };
+  }),
+
+  listInvites: protectedProcedure.query(async ({ ctx }) => {
+    const now = new Date();
+    const active = await ctx.prisma.invite.findMany({
+      where: { usedBy: null, expiresAt: { gt: now } },
+      include: { creator: { select: { username: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    const used = await ctx.prisma.invite.findMany({
+      where: { usedBy: { not: null } },
+      include: {
+        creator: { select: { username: true } },
+        user: { select: { username: true } },
+      },
+      orderBy: { usedAt: "desc" },
+      take: 50,
+    });
+    return { active, used };
+  }),
+
+  revokeInvite: protectedProcedure
+    .input(z.object({ code: z.string().min(1).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const row = await ctx.prisma.invite.findUnique({ where: { code: input.code } });
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "invite not found" });
+      if (row.usedBy) throw new TRPCError({ code: "BAD_REQUEST", message: "already used" });
+      await ctx.prisma.invite.update({
+        where: { code: input.code },
+        data: { expiresAt: new Date(0) },
+      });
+      return { ok: true as const };
     }),
 });
