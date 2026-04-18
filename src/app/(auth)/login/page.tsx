@@ -18,7 +18,8 @@ export default function LoginPage() {
   const login = trpc.auth.login.useMutation({
     onSuccess: () => {
       const next = search.get("next");
-      router.push(next && next.startsWith("/") ? next : "/");
+      const safe = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+      router.push(safe);
       router.refresh();
     },
     onError: (e) => setError(e.message),

@@ -21,4 +21,11 @@ describe("rate-limit", () => {
     const r = await hitLoginBucket("bucket:lock", 2, 60);
     expect(r.locked).toBe(true);
   });
+
+  it("sets a TTL on the key from the first hit (atomic INCR+EXPIRE)", async () => {
+    await hitLoginBucket("bucket:ttl-check", 5, 120);
+    const ttl = await redis.ttl("bucket:ttl-check");
+    expect(ttl).toBeGreaterThan(0);
+    expect(ttl).toBeLessThanOrEqual(120);
+  });
 });
