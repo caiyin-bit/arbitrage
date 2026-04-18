@@ -174,7 +174,7 @@ export async function openHedgedPosition(
         };
       } else {
         const { executeRescue } = await import("./rescue-execute");
-        finalResult = await executeRescue({
+        finalResult = await executeRescue(ctx, {
           position,
           plan,
           executionId,

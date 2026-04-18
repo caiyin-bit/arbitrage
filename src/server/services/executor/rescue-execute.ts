@@ -1,10 +1,9 @@
-import { prisma } from "@/server/db/client";
 import type { ExchangeAdapter } from "@/server/services/exchange/types";
 import type { Position } from "@prisma/client";
 import { generateClientOrderId } from "./id";
 import { recordTradeAndAggregate } from "./trade-recorder";
 import type { RescuePlan } from "./rescue";
-import type { ExecutionResult } from "./types";
+import type { ExecutionResult, ExecutorContext } from "./types";
 import type { Decimal } from "@prisma/client/runtime/library";
 
 interface ExecuteRescueArgs {
@@ -21,6 +20,7 @@ interface ExecuteRescueArgs {
 const OPPORTUNITY_COOLDOWN_MS = 30 * 60 * 1000; // 30 min
 
 export async function executeRescue(
+  ctx: ExecutorContext,
   args: ExecuteRescueArgs,
 ): Promise<ExecutionResult> {
   const { position, plan, executionId, longAdapter, shortAdapter, longExchangeId, shortExchangeId, symbol } = args;
@@ -91,8 +91,8 @@ export async function executeRescue(
   }
 
   // Re-read the position to see the post-rescue aggregates
-  const updated = await prisma.position.findUniqueOrThrow({
-    where: { id: position.id },
+  const updated = await ctx.store.findPositionOrThrow({
+    id: position.id,
   });
 
   const longNet = (updated.longSize as unknown as Decimal).toNumber();
@@ -104,19 +104,21 @@ export async function executeRescue(
     ? "OPEN"
     : "RESCUE";
 
-  await prisma.position.update({
-    where: { id: position.id },
-    data: {
-      status: newStatus,
-      ...(newStatus === "CLOSED" ? { closedAt: new Date() } : {}),
-    },
+  await ctx.store.updatePosition(position.id, {
+    status: newStatus,
+    ...(newStatus === "CLOSED" ? { closedAt: ctx.clock.now() } : {}),
   });
 
   // Cool down the opportunity
+  const now = ctx.clock.now();
+  const cooldownUntil = new Date(now.getTime() + OPPORTUNITY_COOLDOWN_MS);
+  // TODO: T13 will add updateOpportunity to PositionStore
+  // For now, we need to use Prisma directly for opportunity updates
+  const { prisma } = await import("@/server/db/client");
   await prisma.opportunity.update({
     where: { id: position.opportunityId },
     data: {
-      cooldownUntil: new Date(Date.now() + OPPORTUNITY_COOLDOWN_MS),
+      cooldownUntil,
     },
   });
 
