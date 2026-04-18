@@ -37,7 +37,7 @@ describe("auth.register", () => {
     await prisma.user.create({ data: { username: "first", passwordHash: "x$y" } });
     const caller = appRouter.createCaller(freshCtx());
     await expect(
-      caller.auth.register({ username: "u2", password: "hunter22" }),
+      caller.auth.register({ username: "u2x", password: "hunter22" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
@@ -75,7 +75,7 @@ describe("auth.register", () => {
     });
     const caller = appRouter.createCaller(freshCtx());
     await expect(
-      caller.auth.register({ username: "x", password: "hunter22", inviteCode: "INV-USED" }),
+      caller.auth.register({ username: "u3x", password: "hunter22", inviteCode: "INV-USED" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
@@ -90,7 +90,7 @@ describe("auth.register", () => {
     });
     const caller = appRouter.createCaller(freshCtx());
     await expect(
-      caller.auth.register({ username: "x", password: "hunter22", inviteCode: "INV-OLD" }),
+      caller.auth.register({ username: "u4x", password: "hunter22", inviteCode: "INV-OLD" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
@@ -107,8 +107,8 @@ describe("auth.register", () => {
     const c1 = appRouter.createCaller(freshCtx());
     const c2 = appRouter.createCaller(freshCtx());
     const results = await Promise.allSettled([
-      c1.auth.register({ username: "a", password: "hunter22" }),
-      c2.auth.register({ username: "b", password: "hunter22" }),
+      c1.auth.register({ username: "abc", password: "hunter22" }),
+      c2.auth.register({ username: "def", password: "hunter22" }),
     ]);
     const fulfilled = results.filter((r) => r.status === "fulfilled").length;
     expect(fulfilled).toBe(1);
@@ -127,8 +127,8 @@ describe("auth.register", () => {
     const c1 = appRouter.createCaller(freshCtx());
     const c2 = appRouter.createCaller(freshCtx());
     const results = await Promise.allSettled([
-      c1.auth.register({ username: "r1", password: "hunter22", inviteCode: "RACE" }),
-      c2.auth.register({ username: "r2", password: "hunter22", inviteCode: "RACE" }),
+      c1.auth.register({ username: "racer1", password: "hunter22", inviteCode: "RACE" }),
+      c2.auth.register({ username: "racer2", password: "hunter22", inviteCode: "RACE" }),
     ]);
     expect(results.filter((r) => r.status === "fulfilled").length).toBe(1);
   });
@@ -136,7 +136,7 @@ describe("auth.register", () => {
   it("password shorter than 8 chars rejects with BAD_REQUEST", async () => {
     const caller = appRouter.createCaller(freshCtx());
     await expect(
-      caller.auth.register({ username: "a", password: "short" }),
+      caller.auth.register({ username: "abc", password: "short" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

@@ -8,7 +8,7 @@ import { Prisma } from "@prisma/client";
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
-const USERNAME_RE = /^[a-zA-Z0-9_-]{1,32}$/;
+const USERNAME_RE = /^[a-zA-Z0-9_-]{3,32}$/;
 const registerInput = z.object({
   username: z.string().regex(USERNAME_RE),
   password: z.string().min(8).max(200),
