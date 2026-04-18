@@ -1,5 +1,5 @@
-import { prisma } from "@/server/db/client";
 import { computeAggregates, type RawFill } from "./aggregate";
+import type { ExecutorContext } from "./types";
 import type { Decimal } from "@prisma/client/runtime/library";
 
 interface RecordTradeArgs {
@@ -18,29 +18,25 @@ interface RecordTradeArgs {
   executedAt?: Date;
 }
 
-export async function recordTradeAndAggregate(args: RecordTradeArgs) {
-  await prisma.$transaction(async (tx) => {
-    await tx.tradeLog.create({
-      data: {
-        positionId: args.positionId,
-        exchangeId: args.exchangeId,
-        executionId: args.executionId,
-        clientOrderId: args.clientOrderId,
-        side: args.side.toUpperCase() as any,
-        action: args.action.toUpperCase() as any,
-        orderType: args.orderType === "market" ? "MARKET" : "LIMIT_IOC",
-        price: args.price,
-        signedQty: args.signedQty,
-        fee: args.fee,
-        exchangeOrderId: args.exchangeOrderId,
-        status: args.status.toUpperCase() as any,
-        executedAt: args.executedAt,
-      },
+export async function recordTradeAndAggregate(ctx: ExecutorContext, args: RecordTradeArgs) {
+  await ctx.store.transaction(async (tx) => {
+    await tx.createTradeLog({
+      positionId: args.positionId,
+      exchangeId: args.exchangeId,
+      executionId: args.executionId,
+      clientOrderId: args.clientOrderId,
+      side: args.side.toUpperCase() as any,
+      action: args.action.toUpperCase() as any,
+      orderType: args.orderType === "market" ? "MARKET" : "LIMIT_IOC",
+      price: args.price,
+      signedQty: args.signedQty,
+      fee: args.fee,
+      exchangeOrderId: args.exchangeOrderId,
+      status: args.status.toUpperCase() as any,
+      executedAt: args.executedAt,
     });
 
-    const logs = await tx.tradeLog.findMany({
-      where: { positionId: args.positionId },
-    });
+    const logs = await tx.findManyTradeLogs({ positionId: args.positionId });
 
     const fills: RawFill[] = logs.map((l) => ({
       side: l.side.toLowerCase() as "long" | "short",
@@ -52,14 +48,11 @@ export async function recordTradeAndAggregate(args: RecordTradeArgs) {
 
     const agg = computeAggregates(fills);
 
-    await tx.position.update({
-      where: { id: args.positionId },
-      data: {
-        longSize: agg.longSize,
-        longAvgEntryPrice: agg.longAvgEntry,
-        shortSize: agg.shortSize,
-        shortAvgEntryPrice: agg.shortAvgEntry,
-      },
+    await tx.updatePosition(args.positionId, {
+      longSize: agg.longSize,
+      longAvgEntryPrice: agg.longAvgEntry,
+      shortSize: agg.shortSize,
+      shortAvgEntryPrice: agg.shortAvgEntry,
     });
   });
 }

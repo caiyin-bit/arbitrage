@@ -1,10 +1,9 @@
-import { prisma } from "@/server/db/client";
 import type { ExchangeAdapter } from "@/server/services/exchange/types";
 import type { Position } from "@prisma/client";
 import { generateClientOrderId } from "./id";
 import { recordTradeAndAggregate } from "./trade-recorder";
 import type { RescuePlan } from "./rescue";
-import type { ExecutionResult } from "./types";
+import type { ExecutionResult, ExecutorContext } from "./types";
 import type { Decimal } from "@prisma/client/runtime/library";
 
 interface ExecuteRescueArgs {
@@ -21,6 +20,7 @@ interface ExecuteRescueArgs {
 const OPPORTUNITY_COOLDOWN_MS = 30 * 60 * 1000; // 30 min
 
 export async function executeRescue(
+  ctx: ExecutorContext,
   args: ExecuteRescueArgs,
 ): Promise<ExecutionResult> {
   const { position, plan, executionId, longAdapter, shortAdapter, longExchangeId, shortExchangeId, symbol } = args;
@@ -40,7 +40,7 @@ export async function executeRescue(
       clientOrderId,
     });
 
-    await recordTradeAndAggregate({
+    await recordTradeAndAggregate(ctx, {
       positionId: position.id,
       exchangeId,
       executionId,
@@ -53,7 +53,7 @@ export async function executeRescue(
       fee: order.fee,
       exchangeOrderId: order.id,
       status: "filled",
-      executedAt: new Date(),
+      executedAt: ctx.clock.now(),
     });
 
     note = `Rescued ${plan.qty} ${plan.side} via market reverse`;
@@ -71,7 +71,7 @@ export async function executeRescue(
       clientOrderId,
     });
 
-    await recordTradeAndAggregate({
+    await recordTradeAndAggregate(ctx, {
       positionId: position.id,
       exchangeId,
       executionId,
@@ -84,15 +84,15 @@ export async function executeRescue(
       fee: order.fee,
       exchangeOrderId: order.id,
       status: order.filledSize > 0 ? "filled" : "failed",
-      executedAt: new Date(),
+      executedAt: ctx.clock.now(),
     });
 
     note = `Topped up ${plan.qty} ${plan.side} via market`;
   }
 
   // Re-read the position to see the post-rescue aggregates
-  const updated = await prisma.position.findUniqueOrThrow({
-    where: { id: position.id },
+  const updated = await ctx.store.findPositionOrThrow({
+    id: position.id,
   });
 
   const longNet = (updated.longSize as unknown as Decimal).toNumber();
@@ -104,21 +104,15 @@ export async function executeRescue(
     ? "OPEN"
     : "RESCUE";
 
-  await prisma.position.update({
-    where: { id: position.id },
-    data: {
-      status: newStatus,
-      ...(newStatus === "CLOSED" ? { closedAt: new Date() } : {}),
-    },
+  await ctx.store.updatePosition(position.id, {
+    status: newStatus,
+    ...(newStatus === "CLOSED" ? { closedAt: ctx.clock.now() } : {}),
   });
 
   // Cool down the opportunity
-  await prisma.opportunity.update({
-    where: { id: position.opportunityId },
-    data: {
-      cooldownUntil: new Date(Date.now() + OPPORTUNITY_COOLDOWN_MS),
-    },
-  });
+  const now = ctx.clock.now();
+  const cooldownUntil = new Date(now.getTime() + OPPORTUNITY_COOLDOWN_MS);
+  await ctx.store.updateOpportunity(position.opportunityId, { cooldownUntil });
 
   const { dispatch } = await import("@/server/services/notifier");
   if (plan.kind !== "both_filled" && plan.kind !== "both_failed") {

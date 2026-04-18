@@ -11,3 +11,6 @@ next-env.d.ts
 
 # Claude Code local workspace
 .claude/
+
+/docs/backtest-reports/*
+!/docs/backtest-reports/example/

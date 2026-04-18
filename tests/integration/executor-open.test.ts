@@ -123,7 +123,9 @@ describe("openHedgedPosition — full integration", () => {
     });
 
     const { openHedgedPosition } = await import("@/server/services/executor/execute-open");
-    const result = await openHedgedPosition({
+    const { buildProdContext } = await import("@/server/services/executor/context-prod");
+    const ctx = buildProdContext();
+    const result = await openHedgedPosition(ctx, {
       idempotencyKey: crypto.randomUUID(),
       opportunityId: opp.id,
       symbol: "BTC/USDT:USDT",
@@ -168,6 +170,8 @@ describe("openHedgedPosition — full integration", () => {
     });
 
     const { openHedgedPosition } = await import("@/server/services/executor/execute-open");
+    const { buildProdContext } = await import("@/server/services/executor/context-prod");
+    const ctx = buildProdContext();
     const idempotencyKey = crypto.randomUUID();
     const payload = {
       idempotencyKey,
@@ -179,8 +183,8 @@ describe("openHedgedPosition — full integration", () => {
       leverage: 2,
     };
 
-    const first = await openHedgedPosition(payload);
-    const second = await openHedgedPosition(payload);
+    const first = await openHedgedPosition(ctx, payload);
+    const second = await openHedgedPosition(ctx, payload);
 
     expect(second.positionId).toBe(first.positionId);
     expect(second.executionId).toBe(first.executionId);
