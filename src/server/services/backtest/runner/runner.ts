@@ -172,8 +172,14 @@ async function handleFundingCollection(ctx: ExecutorContext, cfg: BacktestConfig
       return;
     }
   }
+  // Only consider exchanges we have OHLCV data for — opening a position requires
+  // the HistoricalAdapter to find a kline for pricing, and an exchange without
+  // OHLCV causes every open attempt to fail mid-fill.
   const rates = await prisma.fundingRateSnapshot.findMany({
-    where: { collectedAt: { lte: now } },
+    where: {
+      collectedAt: { lte: now },
+      exchange: { ohlcvSnapshots: { some: {} } },
+    },
     include: { exchange: { select: { name: true } } },
     orderBy: { collectedAt: "desc" },
     take: 200,
