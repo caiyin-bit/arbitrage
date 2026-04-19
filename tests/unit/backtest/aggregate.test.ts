@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { aggregate } from "@/server/services/backtest/reporter/aggregate";
+import { aggregate } from "@/lib/backtest-aggregate";
 import type { ClosedTrade, EquityCurvePoint } from "@/server/services/backtest/types";
 
 function trade(overrides: Partial<ClosedTrade>): ClosedTrade {

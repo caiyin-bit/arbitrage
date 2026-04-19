@@ -285,3 +285,27 @@ model OhlcvSnapshot {
   @@index([symbol, openTime])
   @@map("ohlcv_snapshots")
 }
+
+model BacktestRun {
+  id           String   @id @default(cuid())
+  startedAt    DateTime @map("started_at")
+  finishedAt   DateTime @map("finished_at")
+  fromDate     DateTime @map("from_date")
+  toDate       DateTime @map("to_date")
+  config       Json
+
+  totalTrades  Int      @map("total_trades")
+  winRate      Decimal  @db.Decimal(6, 4)  @map("win_rate")
+  roi          Decimal  @db.Decimal(10, 6)
+  netPnl       Decimal  @db.Decimal(18, 4) @map("net_pnl")
+  maxDrawdown  Decimal  @db.Decimal(18, 4) @map("max_drawdown")
+  sharpeRatio  Decimal  @db.Decimal(10, 4) @map("sharpe_ratio")
+
+  closedTrades Json     @map("closed_trades")
+  equityCurve  Json     @map("equity_curve")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([startedAt])
+  @@map("backtest_runs")
+}

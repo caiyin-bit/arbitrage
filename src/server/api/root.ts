@@ -1,5 +1,6 @@
 import { router } from "./trpc";
 import { authRouter } from "./routers/auth";
+import { backtestRouter } from "./routers/backtest";
 import { exchangeRouter } from "./routers/exchange";
 import { opportunityRouter } from "./routers/opportunity";
 import { positionRouter } from "./routers/position";
@@ -8,6 +9,7 @@ import { dashboardRouter } from "./routers/dashboard";
 
 export const appRouter = router({
   auth: authRouter,
+  backtest: backtestRouter,
   exchange: exchangeRouter,
   opportunity: opportunityRouter,
   position: positionRouter,
