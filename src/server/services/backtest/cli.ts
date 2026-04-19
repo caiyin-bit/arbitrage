@@ -3,6 +3,8 @@ import { phase0SanityCheck } from "./phase0-sanity-check";
 import { runBacktest } from "./runner/runner";
 import { writeReport } from "./reporter/reporter";
 import { DEFAULT_CONFIG, type BacktestConfig } from "./types";
+import { prisma } from "@/server/db/client";
+import { persistRun } from "./reporter/persist-run";
 
 interface CliConfig extends BacktestConfig { phase: "0" | "2"; output: string; }
 
@@ -51,6 +53,8 @@ async function main() {
   const dir = await writeReport(result, cfg.output);
   console.log(`[bt] wrote ${dir}`);
   console.log(`[bt] trades=${result.closedTrades.length} equityCurvePoints=${result.equityCurve.length}`);
+  const runId = await persistRun(prisma, result);
+  console.log(`[bt] persisted run ${runId}`);
 }
 
 main().catch((e) => {

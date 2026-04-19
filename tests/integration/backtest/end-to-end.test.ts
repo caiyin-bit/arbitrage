@@ -9,6 +9,7 @@ import { writeReport } from "@/server/services/backtest/reporter/reporter";
 import { DEFAULT_CONFIG } from "@/server/services/backtest/types";
 
 async function reset() {
+  await prisma.backtestRun.deleteMany();
   await prisma.settlement.deleteMany();
   await prisma.tradeLog.deleteMany();
   await prisma.position.deleteMany();
@@ -71,6 +72,13 @@ describe("backtest end-to-end", () => {
     expect(existsSync(path.join(dir, "report.md"))).toBe(true);
     expect(existsSync(path.join(dir, "trades.csv"))).toBe(true);
     expect(existsSync(path.join(dir, "daily.csv"))).toBe(true);
+
+    const { persistRun } = await import("@/server/services/backtest/reporter/persist-run");
+    const runId = await persistRun(prisma, result);
+    const row = await prisma.backtestRun.findUniqueOrThrow({ where: { id: runId } });
+    expect(row.totalTrades).toBeGreaterThanOrEqual(0);
+    expect((row.closedTrades as unknown[]).length).toBe(result.closedTrades.length);
+    expect((row.equityCurve as unknown[]).length).toBe(result.equityCurve.length);
   }, 60_000);
 
   it("trades have real math: non-zero fees, netPnl = grossPnl + fundingPnl - fees", async () => {
