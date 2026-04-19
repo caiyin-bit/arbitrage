@@ -205,9 +205,32 @@ async function handleFundingCollection(ctx: ExecutorContext, cfg: BacktestConfig
   const openCount = (await ctx.store.listOpenPositions()).length;
   const slots = Math.max(0, cfg.maxConcurrent - openCount);
 
+  // Diagnostic: sample per-tick snapshot/opportunity/slot counts to a
+  // low-frequency probe (every 288 ticks ≈ once per day in a 5min tick loop).
+  // Gated by BACKTEST_VERBOSE=summary to avoid flooding 52560 ticks of log.
+  if (process.env.BACKTEST_VERBOSE === "summary") {
+    const tickMinute = Math.floor(now.getTime() / 60000);
+    if (tickMinute % (60 * 24) < 5) {
+      ctx.log("tick", {
+        at: now.toISOString().slice(0, 13),
+        snapshots: snapshots.length,
+        opps: ops.length,
+        openCount,
+        slots,
+        firstOp: ops[0]
+          ? `${ops[0].symbol} ${ops[0].longExchange}→${ops[0].shortExchange} spread=${ops[0].rateSpread.toFixed(6)}`
+          : null,
+      });
+    }
+  }
+
+  if (ops.length > 0 && slots > 0) {
+    ctx.log("attempting opens", { count: Math.min(ops.length, slots), of: ops.length });
+  }
+
   for (const op of ops.slice(0, slots)) {
     try {
-      await openHedgedPosition(ctx, {
+      const result = await openHedgedPosition(ctx, {
         idempotencyKey: `bt-${ctx.clock.now().getTime()}-${op.symbol}-${op.longExchange}-${op.shortExchange}`,
         opportunityId: `bt-op-${ctx.clock.now().getTime()}`,
         symbol: op.symbol,
@@ -216,8 +239,19 @@ async function handleFundingCollection(ctx: ExecutorContext, cfg: BacktestConfig
         size: cfg.positionSize,
         leverage: 1,
       });
+      ctx.log("open result", {
+        symbol: op.symbol,
+        status: result.status,
+        positionId: result.positionId,
+        note: result.note,
+      });
     } catch (err) {
-      ctx.log("open error", { err: String(err) });
+      ctx.log("open error", {
+        symbol: op.symbol,
+        longExchange: op.longExchange,
+        shortExchange: op.shortExchange,
+        err: String(err),
+      });
     }
   }
 }
