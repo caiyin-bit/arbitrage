@@ -174,4 +174,46 @@ describe("backtest end-to-end", () => {
     // With 100% failure rate on opens, no positions ever reach OPEN status, so no closed trades.
     expect(result.closedTrades.length).toBe(0);
   }, 60_000);
+
+  it("finalEquity - initialCapital equals sum(trades.netPnl) after force-close", async () => {
+    const bin = await prisma.exchange.create({ data: { name: "binance", apiKey: "", apiSecret: "", feeRate: 0.0005 } });
+    const okx = await prisma.exchange.create({ data: { name: "okx", apiKey: "", apiSecret: "", feeRate: 0.0005 } });
+    const t0 = Date.UTC(2025, 0, 1);
+
+    for (let h = 0; h < 72; h++) {
+      for (const ex of [bin, okx]) {
+        await prisma.ohlcvSnapshot.create({
+          data: {
+            exchangeId: ex.id, symbol: "BTC/USDT:USDT", timeframe: "1h",
+            openTime: new Date(t0 + h * 3600_000),
+            open: 100, high: 100.5, low: 99.5, close: 100,
+            volume: 1000,
+          },
+        });
+      }
+    }
+    for (const h of [8, 16, 24, 32, 40, 48, 56, 64]) {
+      const at = new Date(t0 + h * 3600_000);
+      await prisma.fundingRateSnapshot.create({
+        data: { exchangeId: bin.id, symbol: "BTC/USDT:USDT", currentRate: 0.001, collectedAt: at, intervalHours: 8, nextSettlement: new Date(at.getTime() + 8 * 3600_000) },
+      });
+      await prisma.fundingRateSnapshot.create({
+        data: { exchangeId: okx.id, symbol: "BTC/USDT:USDT", currentRate: -0.0005, collectedAt: at, intervalHours: 8, nextSettlement: new Date(at.getTime() + 8 * 3600_000) },
+      });
+    }
+
+    const result = await runBacktest({
+      ...DEFAULT_CONFIG,
+      from: new Date(t0),
+      to: new Date(t0 + 72 * 3600_000),
+      failureRate: 0,
+      volatilityPauseEnabled: false,
+    });
+
+    expect(result.closedTrades.length).toBeGreaterThan(0);
+
+    const finalEquity = result.equityCurve[result.equityCurve.length - 1].equity;
+    const netPnl = result.closedTrades.reduce((s, t) => s + t.netPnl, 0);
+    expect(Math.abs((finalEquity - DEFAULT_CONFIG.initialCapital) - netPnl)).toBeLessThan(0.01);
+  }, 60_000);
 });

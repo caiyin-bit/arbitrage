@@ -134,6 +134,21 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestResul
   }
 
   const closedTrades = buildClosedTrades(store, exchangeNamesById);
+
+  // Append a final equity point at config.to so finalEquity and sum(trades.netPnl)
+  // agree by construction once every position is closed. Without this point,
+  // equityCurve stops at the last daily tick (pre-force-close) while closedTrades
+  // already reflects the force-closed P&L — giving a roi/netPnl sign mismatch.
+  const finalRealized = closedTrades.reduce((s, t) => s + (t.grossPnl - t.fees), 0);
+  const finalFunding = store.allSettlements().reduce((s, x) => s + Number(x.fundingAmount), 0);
+  equityCurve.push({
+    date: config.to,
+    equity: config.initialCapital + finalRealized + finalFunding,
+    grossPnl: closedTrades.reduce((s, t) => s + t.grossPnl, 0),
+    netPnl: closedTrades.reduce((s, t) => s + t.netPnl, 0),
+    totalFees: closedTrades.reduce((s, t) => s + t.fees, 0),
+  });
+
   return { config, startedAt, finishedAt: new Date(), closedTrades, equityCurve };
 }
 
