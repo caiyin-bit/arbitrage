@@ -14,6 +14,30 @@ import { InMemoryRedis } from "./in-memory-redis";
 import { HistoricalAdapter } from "./historical-adapter";
 import { createFailureInjector } from "./failure-injector";
 
+/**
+ * Weighted average of trade-log prices, restricted to FILLED/PARTIAL logs.
+ *
+ * PENDING/FAILED logs carry price=0 from the pre-persist step; including them
+ * in the average silently zeroes out the real fill price of a sibling leg.
+ * Exported so the backtest's close-math can be unit-tested in isolation.
+ */
+export function wAvgFilledPrice(logs: TradeLog[]): number {
+  const filled = logs.filter(
+    (l) => l.status === "FILLED" || l.status === "PARTIAL",
+  );
+  const totalQty = filled.reduce(
+    (s, l) => s + Math.abs(Number(l.signedQty)),
+    0,
+  );
+  if (totalQty === 0) return 0;
+  return (
+    filled.reduce(
+      (s, l) => s + Number(l.price) * Math.abs(Number(l.signedQty)),
+      0,
+    ) / totalQty
+  );
+}
+
 export async function runBacktest(config: BacktestConfig): Promise<BacktestResult> {
   const startedAt = new Date();
   const clock = new VirtualClock(config.from);
@@ -110,6 +134,21 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestResul
   }
 
   const closedTrades = buildClosedTrades(store, exchangeNamesById);
+
+  // Append a final equity point at config.to so finalEquity and sum(trades.netPnl)
+  // agree by construction once every position is closed. Without this point,
+  // equityCurve stops at the last daily tick (pre-force-close) while closedTrades
+  // already reflects the force-closed P&L — giving a roi/netPnl sign mismatch.
+  const finalRealized = closedTrades.reduce((s, t) => s + (t.grossPnl - t.fees), 0);
+  const finalFunding = store.allSettlements().reduce((s, x) => s + Number(x.fundingAmount), 0);
+  equityCurve.push({
+    date: config.to,
+    equity: config.initialCapital + finalRealized + finalFunding,
+    grossPnl: closedTrades.reduce((s, t) => s + t.grossPnl, 0),
+    netPnl: closedTrades.reduce((s, t) => s + t.netPnl, 0),
+    totalFees: closedTrades.reduce((s, t) => s + t.fees, 0),
+  });
+
   return { config, startedAt, finishedAt: new Date(), closedTrades, equityCurve };
 }
 
@@ -236,13 +275,24 @@ async function handleFundingCollection(ctx: ExecutorContext, cfg: BacktestConfig
 
   for (const op of ops.slice(0, slots)) {
     try {
+      // Convert USD notional to base-asset quantity using the long leg's
+      // current price. Long and short prices are within a handful of bps,
+      // so asymmetry is negligible for backtest purposes.
+      const longAdapter = await ctx.adapterFor(op.longExchange);
+      const ticker = await longAdapter.getPrice(op.symbol);
+      if (ticker.last <= 0) {
+        ctx.log("open skipped: non-positive price", { symbol: op.symbol, price: ticker.last });
+        continue;
+      }
+      const baseQty = cfg.positionSize / ticker.last;
+
       const result = await openHedgedPosition(ctx, {
         idempotencyKey: `bt-${ctx.clock.now().getTime()}-${op.symbol}-${op.longExchange}-${op.shortExchange}`,
         opportunityId: `bt-op-${ctx.clock.now().getTime()}`,
         symbol: op.symbol,
         longExchange: op.longExchange,
         shortExchange: op.shortExchange,
-        size: cfg.positionSize,
+        size: baseQty,
         leverage: 1,
       });
       ctx.log("open result", {
@@ -250,6 +300,9 @@ async function handleFundingCollection(ctx: ExecutorContext, cfg: BacktestConfig
         status: result.status,
         positionId: result.positionId,
         note: result.note,
+        usdNotional: cfg.positionSize,
+        baseQty,
+        refPrice: ticker.last,
       });
     } catch (err) {
       ctx.log("open error", {
@@ -324,12 +377,6 @@ function buildClosedTrades(
   store: InMemoryPositionStore,
   exchangeNames: Map<string, string>,
 ): ClosedTrade[] {
-  const wAvg = (ls: TradeLog[]) => {
-    const totalQty = ls.reduce((s, l) => s + Math.abs(Number(l.signedQty)), 0);
-    if (totalQty === 0) return 0;
-    return ls.reduce((s, l) => s + Number(l.price) * Math.abs(Number(l.signedQty)), 0) / totalQty;
-  };
-
   const trades: ClosedTrade[] = [];
   for (const p of store.allPositions()) {
     if (p.status !== "CLOSED") continue;
@@ -348,13 +395,33 @@ function buildClosedTrades(
       if (key in buckets) buckets[key].push(log);
     }
 
-    const longEntry  = wAvg(buckets.OPEN_LONG);
-    const shortEntry = wAvg(buckets.OPEN_SHORT);
-    const longExit   = wAvg(buckets.CLOSE_LONG);
-    const shortExit  = wAvg(buckets.CLOSE_SHORT);
+    const longEntry  = wAvgFilledPrice(buckets.OPEN_LONG);
+    const shortEntry = wAvgFilledPrice(buckets.OPEN_SHORT);
+    const longExit   = wAvgFilledPrice(buckets.CLOSE_LONG);
+    const shortExit  = wAvgFilledPrice(buckets.CLOSE_SHORT);
 
-    const longSize  = Number(p.longSize);
-    const shortSize = Number(p.shortSize);
+    // Entry-fill quantity per leg. Can't use p.longSize/p.shortSize here: reconcile
+    // stores the NET position size (opens minus closes), which returns to 0 once
+    // the position closes — making grossPnl degenerate. The trade-log OPEN
+    // buckets hold the true filled entry quantity.
+    const filledQty = (ls: TradeLog[]) =>
+      ls
+        .filter((l) => l.status === "FILLED" || l.status === "PARTIAL")
+        .reduce((s, l) => s + Math.abs(Number(l.signedQty)), 0);
+    const longSize  = filledQty(buckets.OPEN_LONG);
+    const shortSize = filledQty(buckets.OPEN_SHORT);
+
+    if (longSize > 0 && longExit === 0) {
+      console.warn(
+        `[bt] position ${p.id} (${p.symbol}) longExit=0: CLOSE_LONG trade logs had no FILLED/PARTIAL entry — grossPnl will be skewed by longEntry × longSize`,
+      );
+    }
+    if (shortSize > 0 && shortExit === 0) {
+      console.warn(
+        `[bt] position ${p.id} (${p.symbol}) shortExit=0: CLOSE_SHORT trade logs had no FILLED/PARTIAL entry — grossPnl will be skewed by −shortEntry × shortSize`,
+      );
+    }
+
     const grossPnl  = (longExit - longEntry) * longSize + (shortEntry - shortExit) * shortSize;
 
     const fees       = logs.reduce((s, l) => s + Number(l.fee), 0);
@@ -372,6 +439,7 @@ function buildClosedTrades(
       shortExchange: exchangeNames.get(p.shortExchangeId) ?? p.shortExchangeId,
       openedAt, closedAt,
       longEntry, shortEntry, longExit, shortExit,
+      longSize, shortSize,
       grossPnl, fees, fundingPnl, netPnl, holdHours,
     });
   }

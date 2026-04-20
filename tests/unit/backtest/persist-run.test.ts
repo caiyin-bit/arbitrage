@@ -48,6 +48,7 @@ describe("persistRun", () => {
           openedAt: new Date("2025-01-01T00:00:00Z"),
           closedAt: new Date("2025-01-01T08:00:00Z"),
           longEntry: 100, shortEntry: 100, longExit: 101, shortExit: 99,
+          longSize: 1, shortSize: 1,
           grossPnl: 20, fees: 2, fundingPnl: 1, netPnl: 19, holdHours: 8,
         },
       ],

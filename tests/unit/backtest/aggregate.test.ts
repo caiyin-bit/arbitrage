@@ -11,6 +11,7 @@ function trade(overrides: Partial<ClosedTrade>): ClosedTrade {
     openedAt: new Date("2025-01-01T00:00:00Z"),
     closedAt: new Date("2025-01-01T08:00:00Z"),
     longEntry: 100, shortEntry: 100, longExit: 100, shortExit: 100,
+    longSize: 1, shortSize: 1,
     grossPnl: 0, fees: 0, fundingPnl: 0, netPnl: 0, holdHours: 8,
     ...overrides,
   };
