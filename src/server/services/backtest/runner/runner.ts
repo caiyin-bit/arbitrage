@@ -14,6 +14,30 @@ import { InMemoryRedis } from "./in-memory-redis";
 import { HistoricalAdapter } from "./historical-adapter";
 import { createFailureInjector } from "./failure-injector";
 
+/**
+ * Weighted average of trade-log prices, restricted to FILLED/PARTIAL logs.
+ *
+ * PENDING/FAILED logs carry price=0 from the pre-persist step; including them
+ * in the average silently zeroes out the real fill price of a sibling leg.
+ * Exported so the backtest's close-math can be unit-tested in isolation.
+ */
+export function wAvgFilledPrice(logs: TradeLog[]): number {
+  const filled = logs.filter(
+    (l) => l.status === "FILLED" || l.status === "PARTIAL",
+  );
+  const totalQty = filled.reduce(
+    (s, l) => s + Math.abs(Number(l.signedQty)),
+    0,
+  );
+  if (totalQty === 0) return 0;
+  return (
+    filled.reduce(
+      (s, l) => s + Number(l.price) * Math.abs(Number(l.signedQty)),
+      0,
+    ) / totalQty
+  );
+}
+
 export async function runBacktest(config: BacktestConfig): Promise<BacktestResult> {
   const startedAt = new Date();
   const clock = new VirtualClock(config.from);
@@ -324,12 +348,6 @@ function buildClosedTrades(
   store: InMemoryPositionStore,
   exchangeNames: Map<string, string>,
 ): ClosedTrade[] {
-  const wAvg = (ls: TradeLog[]) => {
-    const totalQty = ls.reduce((s, l) => s + Math.abs(Number(l.signedQty)), 0);
-    if (totalQty === 0) return 0;
-    return ls.reduce((s, l) => s + Number(l.price) * Math.abs(Number(l.signedQty)), 0) / totalQty;
-  };
-
   const trades: ClosedTrade[] = [];
   for (const p of store.allPositions()) {
     if (p.status !== "CLOSED") continue;
@@ -348,13 +366,25 @@ function buildClosedTrades(
       if (key in buckets) buckets[key].push(log);
     }
 
-    const longEntry  = wAvg(buckets.OPEN_LONG);
-    const shortEntry = wAvg(buckets.OPEN_SHORT);
-    const longExit   = wAvg(buckets.CLOSE_LONG);
-    const shortExit  = wAvg(buckets.CLOSE_SHORT);
+    const longEntry  = wAvgFilledPrice(buckets.OPEN_LONG);
+    const shortEntry = wAvgFilledPrice(buckets.OPEN_SHORT);
+    const longExit   = wAvgFilledPrice(buckets.CLOSE_LONG);
+    const shortExit  = wAvgFilledPrice(buckets.CLOSE_SHORT);
 
     const longSize  = Number(p.longSize);
     const shortSize = Number(p.shortSize);
+
+    if (longSize > 0 && longExit === 0) {
+      console.warn(
+        `[bt] position ${p.id} (${p.symbol}) longExit=0: CLOSE_LONG trade logs had no FILLED/PARTIAL entry — grossPnl will be skewed by longEntry × longSize`,
+      );
+    }
+    if (shortSize > 0 && shortExit === 0) {
+      console.warn(
+        `[bt] position ${p.id} (${p.symbol}) shortExit=0: CLOSE_SHORT trade logs had no FILLED/PARTIAL entry — grossPnl will be skewed by −shortEntry × shortSize`,
+      );
+    }
+
     const grossPnl  = (longExit - longEntry) * longSize + (shortEntry - shortExit) * shortSize;
 
     const fees       = logs.reduce((s, l) => s + Number(l.fee), 0);
