@@ -4,6 +4,12 @@ export interface BacktestConfig {
   from: Date;
   to: Date;
   initialCapital: number;
+  /**
+   * Per-leg notional in USD. Runner converts to base-asset quantity at open
+   * time via `positionSize / currentPrice` before calling openHedgedPosition.
+   * (Production executor takes base-asset units; this conversion is a
+   * backtest-only concern.)
+   */
   positionSize: number;
   maxConcurrent: number;
   minSpread: number;
@@ -65,6 +71,8 @@ export interface ClosedTrade {
   shortEntry: number;
   longExit: number;
   shortExit: number;
+  longSize: number;
+  shortSize: number;
   grossPnl: number;
   fees: number;
   fundingPnl: number;

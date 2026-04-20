@@ -216,4 +216,50 @@ describe("backtest end-to-end", () => {
     const netPnl = result.closedTrades.reduce((s, t) => s + t.netPnl, 0);
     expect(Math.abs((finalEquity - DEFAULT_CONFIG.initialCapital) - netPnl)).toBeLessThan(0.01);
   }, 60_000);
+
+  it("positionSize is USD notional: runner opens base-asset quantity ≈ positionSize / price", async () => {
+    const bin = await prisma.exchange.create({ data: { name: "binance", apiKey: "", apiSecret: "", feeRate: 0.0005 } });
+    const okx = await prisma.exchange.create({ data: { name: "okx", apiKey: "", apiSecret: "", feeRate: 0.0005 } });
+    const t0 = Date.UTC(2025, 0, 1);
+
+    const BTC_PRICE = 50_000;
+    for (let h = 0; h < 48; h++) {
+      for (const ex of [bin, okx]) {
+        await prisma.ohlcvSnapshot.create({
+          data: {
+            exchangeId: ex.id, symbol: "BTC/USDT:USDT", timeframe: "1h",
+            openTime: new Date(t0 + h * 3600_000),
+            open: BTC_PRICE, high: BTC_PRICE * 1.001, low: BTC_PRICE * 0.999,
+            close: BTC_PRICE,
+            volume: 1000,
+          },
+        });
+      }
+    }
+    for (const h of [8, 16, 24, 32, 40]) {
+      const at = new Date(t0 + h * 3600_000);
+      await prisma.fundingRateSnapshot.create({
+        data: { exchangeId: bin.id, symbol: "BTC/USDT:USDT", currentRate: 0.001, collectedAt: at, intervalHours: 8, nextSettlement: new Date(at.getTime() + 8 * 3600_000) },
+      });
+      await prisma.fundingRateSnapshot.create({
+        data: { exchangeId: okx.id, symbol: "BTC/USDT:USDT", currentRate: -0.0005, collectedAt: at, intervalHours: 8, nextSettlement: new Date(at.getTime() + 8 * 3600_000) },
+      });
+    }
+
+    const USD_NOTIONAL = 500;
+    const result = await runBacktest({
+      ...DEFAULT_CONFIG,
+      from: new Date(t0),
+      to: new Date(t0 + 48 * 3600_000),
+      positionSize: USD_NOTIONAL,
+      failureRate: 0,
+      volatilityPauseEnabled: false,
+    });
+
+    expect(result.closedTrades.length).toBeGreaterThan(0);
+    for (const t of result.closedTrades) {
+      const notional = t.longSize * t.longEntry;
+      expect(Math.abs(notional - USD_NOTIONAL)).toBeLessThan(USD_NOTIONAL * 0.01);
+    }
+  }, 60_000);
 });

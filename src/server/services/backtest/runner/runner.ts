@@ -275,13 +275,24 @@ async function handleFundingCollection(ctx: ExecutorContext, cfg: BacktestConfig
 
   for (const op of ops.slice(0, slots)) {
     try {
+      // Convert USD notional to base-asset quantity using the long leg's
+      // current price. Long and short prices are within a handful of bps,
+      // so asymmetry is negligible for backtest purposes.
+      const longAdapter = await ctx.adapterFor(op.longExchange);
+      const ticker = await longAdapter.getPrice(op.symbol);
+      if (ticker.last <= 0) {
+        ctx.log("open skipped: non-positive price", { symbol: op.symbol, price: ticker.last });
+        continue;
+      }
+      const baseQty = cfg.positionSize / ticker.last;
+
       const result = await openHedgedPosition(ctx, {
         idempotencyKey: `bt-${ctx.clock.now().getTime()}-${op.symbol}-${op.longExchange}-${op.shortExchange}`,
         opportunityId: `bt-op-${ctx.clock.now().getTime()}`,
         symbol: op.symbol,
         longExchange: op.longExchange,
         shortExchange: op.shortExchange,
-        size: cfg.positionSize,
+        size: baseQty,
         leverage: 1,
       });
       ctx.log("open result", {
@@ -289,6 +300,9 @@ async function handleFundingCollection(ctx: ExecutorContext, cfg: BacktestConfig
         status: result.status,
         positionId: result.positionId,
         note: result.note,
+        usdNotional: cfg.positionSize,
+        baseQty,
+        refPrice: ticker.last,
       });
     } catch (err) {
       ctx.log("open error", {
@@ -386,8 +400,16 @@ function buildClosedTrades(
     const longExit   = wAvgFilledPrice(buckets.CLOSE_LONG);
     const shortExit  = wAvgFilledPrice(buckets.CLOSE_SHORT);
 
-    const longSize  = Number(p.longSize);
-    const shortSize = Number(p.shortSize);
+    // Entry-fill quantity per leg. Can't use p.longSize/p.shortSize here: reconcile
+    // stores the NET position size (opens minus closes), which returns to 0 once
+    // the position closes — making grossPnl degenerate. The trade-log OPEN
+    // buckets hold the true filled entry quantity.
+    const filledQty = (ls: TradeLog[]) =>
+      ls
+        .filter((l) => l.status === "FILLED" || l.status === "PARTIAL")
+        .reduce((s, l) => s + Math.abs(Number(l.signedQty)), 0);
+    const longSize  = filledQty(buckets.OPEN_LONG);
+    const shortSize = filledQty(buckets.OPEN_SHORT);
 
     if (longSize > 0 && longExit === 0) {
       console.warn(
@@ -417,6 +439,7 @@ function buildClosedTrades(
       shortExchange: exchangeNames.get(p.shortExchangeId) ?? p.shortExchangeId,
       openedAt, closedAt,
       longEntry, shortEntry, longExit, shortExit,
+      longSize, shortSize,
       grossPnl, fees, fundingPnl, netPnl, holdHours,
     });
   }
